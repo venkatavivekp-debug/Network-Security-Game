@@ -66,8 +66,116 @@ These are the main browser pages used in demos (all require authentication excep
 - Structured error handling across all endpoints
 - Authentication and access control enforced
 - No silent failures
+- **Adaptive enforcement is bounded and recoverable** (step-up verification before hard denial)
 - **Reproducible simulations when seeds are provided** (advanced + evaluation); otherwise the system derives stable default seeds from scenario parameters (see “Reproducibility semantics”)
 
+## Adaptive Security Engine (research upgrade)
+This platform models secure communication as a staged attacker/defender/recovery game. The **Adaptive Security Engine** operationalizes that idea by:
+- computing **risk assessments** from user behavior + system threat signals
+- enforcing **step-up security** (NORMAL → SHCS → CPHS) when required
+- applying **temporary communication holds** for admin-supervised recovery under critical risk
+- emitting **receiver-visible warning signals** without exposing plaintext
+
+### Risk scoring (auditable, non-magical)
+At key control points (login, message send, puzzle solve), the engine derives:
+\(riskScore \in [0,1]\) and a discrete `riskLevel` (`LOW`, `ELEVATED`, `HIGH`, `CRITICAL`).
+
+Signals used include:
+- failed login attempts
+- puzzle attempt pressure / failures
+- unusual login time (relative to prior login)
+- unfamiliar fingerprint (IP + User-Agent hash)
+- global threat intensity (operator-set; can be driven by simulation/telemetry)
+
+### Adaptive mode enforcement (POST /message/send)
+The sender may request a mode (`NORMAL`, `SHCS`, `CPHS`). The server may enforce a stronger posture:
+- **LOW**: honor requested mode
+- **ELEVATED**: prefer SHCS when threat/risk suggests step-up
+- **HIGH**: enforce CPHS
+- **CRITICAL**: enforce CPHS and place message on **temporary hold** for admin review
+
+The response includes:
+- `requestedAlgorithmType`
+- `effectiveAlgorithmType`
+- `escalated` + `escalationReason`
+- `riskScore` + `riskLevel`
+- `communicationHold` when admin-supervised recovery is required
+
+### CPHS puzzle escalation (bounded difficulty)
+CPHS puzzle parameters adapt to risk + threat level:
+- `maxIterations` increases with risk (bounded by server max)
+- `attemptsAllowed` decreases modestly at high risk (never below 1)
+- `expiresAt` shortens at higher risk (never below 60s)
+
+This balances security with operational continuity: puzzles remain solvable for legitimate users.
+
+### Abuse protection / rate limiting
+To protect against brute force and flooding, the backend applies server-side rate limiting (token bucket) on:
+- `POST /auth/login`
+- `POST /message/send`
+- `POST /puzzle/solve/{messageId}`
+- sensitive admin actions (`/admin/*`)
+
+On limit exceed, the API returns `429` with `Retry-After` guidance.
+
+### Receiver warning signals
+Receivers are informed safely via message metadata fields:
+- `riskLevel` / `riskScore` at send time
+- warning strings for **high-risk** sessions
+- `HELD` status indicating admin-supervised recovery is required
+
+### Admin supervision layer (no plaintext access)
+Admins can:
+- view risk status
+- view recent audit events
+- set threat level
+- place/release messages on hold
+- lock/unlock users
+
+Admins **cannot** decrypt messages, retrieve plaintext, or bypass cryptographic gating.
+
+## Experimental Evaluation (research validation)
+This upgrade adds a **research-grade evaluation harness** that turns the platform into an experimental validation system.
+
+### What it does
+- Runs **controlled repeated experiments** over security modes:
+  - `NORMAL`, `SHCS`, `CPHS`, and `ADAPTIVE`
+- Uses the existing **Attack → Defense → Recovery** game simulation engine for repeatable runs.
+- Aggregates measurable metrics to support report/paper-aligned claims.
+
+### Endpoint: `GET /evaluation/compare`
+Query parameters:
+- `attackIntensity` (0..1) — adversarial pressure proxy
+- `numberOfRuns` (default 30)
+- `defenseStrategy` (default `REDUNDANCY`): `REDUNDANCY`, `DYNAMIC_REROUTING`, `PUZZLE_ESCALATION`
+- `numNodes`, `numEdges` (optional; defaults chosen by the service)
+- `seed` (optional) — enables exact reproducibility across runs
+- `persist` (default `false`) — when true, stores results in `evaluation_results`
+
+Response shape:
+- A map keyed by mode: `NORMAL`, `SHCS`, `CPHS`, `ADAPTIVE`
+- Each value is `EvaluationMetrics`:
+  - `attackSuccessRate`
+  - `compromiseRatio`
+  - `averageRecoveryTime`
+  - `resilienceScore`
+  - `userEffortScore`
+  - `falsePositiveRate`
+
+### How metrics are calculated (transparent + auditable)
+- **attackSuccessRate**: mean of the simulation’s effective attack success probability.
+- **compromiseRatio**: \(1 - afterAttackConnectivity\) (clamped to [0,1]).
+- **averageRecoveryTime**: deterministic proxy derived from node/edge loss, recovery rate, budgets, and attack intensity.
+- **resilienceScore**: composite of \(1 - compromiseRatio\), `recoveryRate`, and a normalized recovery-time term.
+- **userEffortScore**:
+  - NORMAL: 0
+  - SHCS: small constant effort
+  - CPHS/ADAPTIVE: proxy effort based on puzzle iteration bounds and expected attempts (reproducible by seed).
+- **falsePositiveRate** (ADAPTIVE): fraction of runs that trigger **communication hold** (admin review required).
+
+### Reproducibility
+- If `seed` is provided, the service derives per-run seeds deterministically with `SeedUtil.mix64(...)`.
+- If omitted, the service derives a stable seed from scenario parameters.
 ## Advanced Cyber Defense Engine
 The advanced layer extends the base simulation with an adaptive cyber-defense engine built on attack-graph progression, stochastic compromise, and repeated attacker-defender rounds.
 

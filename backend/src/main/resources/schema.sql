@@ -138,3 +138,15 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
 CREATE INDEX idx_eval_runs_created_at ON evaluation_runs(created_at);
 CREATE INDEX idx_eval_runs_algorithm ON evaluation_runs(algorithm_type);
 CREATE INDEX idx_eval_runs_type ON evaluation_runs(comparison_type);
+
+CREATE TABLE IF NOT EXISTS evaluation_results (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    mode VARCHAR(20) NOT NULL,
+    parameters_json LONGTEXT NOT NULL,
+    metrics_json LONGTEXT NOT NULL,
+    seed_used BIGINT NOT NULL,
+    created_at TIMESTAMP NOT NULL
+);
+
+CREATE INDEX idx_eval_results_created_at ON evaluation_results(created_at);
+CREATE INDEX idx_eval_results_mode ON evaluation_results(mode);

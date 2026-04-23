@@ -42,6 +42,7 @@ public class SecurityConfig {
                         .requestMatchers("/receive", "/ui/decrypt/**", "/message/received", "/message/decrypt/**").hasRole("RECEIVER")
                         .requestMatchers("/attack/**").hasAnyRole("SENDER", "RECEIVER")
                         .requestMatchers("/simulation/**").hasAnyRole("SENDER", "RECEIVER")
+                        .requestMatchers("/evaluation/**").hasAnyRole("SENDER", "RECEIVER", "ADMIN")
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(apiAuthenticationEntryPoint)
