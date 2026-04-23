@@ -8,6 +8,9 @@ This system is a secure simulation platform for resilient message security, adve
 - Controlled simulation execution
 - Exportable results
 - Reproducible demo via seeding
+- Adaptive security escalation (risk-aware message protection)
+- Persisted CPHS puzzle gating with abuse protection
+- Admin supervision and recovery controls (without plaintext access)
 
 ## Quick Demo Flow (2 minutes)
 1. Configure crypto keys for Docker (required):
