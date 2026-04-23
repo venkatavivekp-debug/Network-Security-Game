@@ -1,0 +1,266 @@
+:root {
+    --bg: #f4f7fb;
+    --panel: #ffffff;
+    --line: #d6deea;
+    --ink: #0f1f3d;
+    --primary: #1f5fb8;
+    --primary-dark: #164887;
+    --notice: #e8f3ff;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--ink);
+    background: linear-gradient(160deg, #eef3fa 0%, #f8fbff 100%);
+}
+
+.container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px;
+}
+
+h1 {
+    margin-top: 0;
+}
+
+.subtitle {
+    margin-top: -8px;
+    color: #3f5479;
+}
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 18px;
+}
+
+label {
+    display: block;
+    margin-bottom: 12px;
+    font-weight: 600;
+}
+
+label.checkbox {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    font-weight: 600;
+}
+
+label.checkbox input {
+    width: auto;
+    margin-top: 3px;
+}
+
+.form-hint {
+    margin: -4px 0 8px;
+    color: #4a5f86;
+    font-weight: 500;
+    line-height: 1.35;
+}
+
+input,
+select,
+textarea,
+button {
+    width: 100%;
+    margin-top: 6px;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #bcc8db;
+    font: inherit;
+}
+
+button {
+    background: var(--primary);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+}
+
+button:hover {
+    background: var(--primary-dark);
+}
+
+.notice {
+    background: var(--notice);
+    border: 1px solid #b8d7ff;
+    color: #124a8d;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 16px;
+}
+
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.top-links {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th,
+td {
+    border: 1px solid var(--line);
+    padding: 10px;
+    text-align: left;
+    vertical-align: top;
+}
+
+th {
+    background: #f2f6fc;
+}
+
+.mono {
+    font-family: "Courier New", Courier, monospace;
+    max-width: 350px;
+    word-break: break-word;
+}
+
+.form-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+}
+
+.full-width {
+    grid-column: 1 / -1;
+}
+
+.inline-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 12px;
+}
+
+.inline-form label {
+    margin-bottom: 0;
+    min-width: 240px;
+}
+
+.chart-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+}
+
+.chart-card {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    background: #fbfdff;
+}
+
+.chart-card canvas {
+    width: 100% !important;
+    height: 260px !important;
+}
+
+.muted {
+    color: #5c6f92;
+}
+
+.table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.app-header {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 6px 0 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+}
+
+.brand-title {
+    font-size: 26px;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+}
+
+.brand-subtitle {
+    margin-top: 4px;
+    color: #3f5479;
+    max-width: 78ch;
+}
+
+.app-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    align-items: center;
+}
+
+.app-nav a {
+    padding: 6px 8px;
+    border-radius: 8px;
+}
+
+.app-nav a.is-active {
+    background: #e9f1ff;
+    text-decoration: none;
+}
+
+.nav-sep {
+    color: #9aa7bf;
+    user-select: none;
+}
+
+.chart-empty {
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px dashed #b7c6df;
+    border-radius: 10px;
+    background: #fbfdff;
+    color: #2b3f63;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: 3px solid rgba(31, 95, 184, 0.35);
+    outline-offset: 2px;
+}

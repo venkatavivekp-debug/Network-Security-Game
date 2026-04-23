@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="fragments :: head('Base simulation history — Network Security Lab')"></head>
+<body>
+<div class="container">
+    <div th:replace="fragments :: appChrome('Base simulation history', 'Filter persisted base runs and drill into per-run metrics.', 'base-history')"></div>
+
+    <div th:replace="fragments :: notice"></div>
+
+    <section class="card">
+        <h2>Filter History</h2>
+        <p class="muted">
+            Export:
+            <a th:href="${selectedAlgorithm != null} ? @{/simulation/export(algorithmType=${selectedAlgorithm})} : @{/simulation/export}">download CSV</a>
+            <span th:if="${selectedAlgorithm != null}">(current filter)</span>
+        </p>
+        <form method="get" th:action="@{/simulation/history-page}" class="inline-form">
+            <label>Algorithm Type
+                <select name="algorithmType">
+                    <option value="" th:selected="${selectedAlgorithm == null}">ALL</option>
+                    <option th:each="algorithm : ${algorithms}"
+                            th:value="${algorithm}"
+                            th:text="${algorithm}"
+                            th:selected="${selectedAlgorithm == algorithm}">
+                    </option>
+                </select>
+            </label>
+            <button type="submit">Apply Filter</button>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2>Past Runs (Latest First)</h2>
+        <div class="table-scroll">
+        <table>
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Created At</th>
+                <th>Algorithm</th>
+                <th>Nodes / Edges</th>
+                <th>Budgets (A/D/R)</th>
+                <th>Initial</th>
+                <th>After Attack</th>
+                <th>After Recovery</th>
+                <th>Def Utility</th>
+                <th>Atk Utility</th>
+                <th>Details</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:if="${#lists.isEmpty(runs)}">
+                <td colspan="11">No simulation history found for this filter.</td>
+            </tr>
+            <tr th:each="run : ${runs}">
+                <td th:text="${run.id}"></td>
+                <td th:text="${run.createdAt}"></td>
+                <td th:text="${run.algorithmType}"></td>
+                <td th:text="${run.numNodes + ' / ' + run.numEdges}"></td>
+                <td th:text="${run.attackBudget + ' / ' + run.defenseBudget + ' / ' + run.recoveryBudget}"></td>
+                <td th:text="${run.initialConnectivity}"></td>
+                <td th:text="${run.afterAttackConnectivity}"></td>
+                <td th:text="${run.afterRecoveryConnectivity}"></td>
+                <td th:text="${run.defenderUtility}"></td>
+                <td th:text="${run.attackerUtility}"></td>
+                <td><a th:href="@{'/simulation/history-page/' + ${run.id}}">View</a></td>
+            </tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+</div>
+</body>
+</html>

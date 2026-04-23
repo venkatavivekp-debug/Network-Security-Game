@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="fragments :: head('Advanced simulation — Network Security Lab')"></head>
+<body>
+<div class="container">
+    <div th:replace="fragments :: appChrome('Advanced simulation', 'Adaptive attack-graph rounds with optional MTD + deception. Posture mode (algorithmType) is a modeled knob—not real cryptanalysis.', 'advanced')"></div>
+
+    <div th:replace="fragments :: notice"></div>
+
+    <section class="card">
+        <h2>Run advanced adaptive simulation</h2>
+        <p>Configure graph size, budgets, defense toggles, posture mode, and optional seed for reproducibility.</p>
+        <form method="post" th:action="@{/simulation/advanced-dashboard/run}" class="form-grid-2">
+            <label for="adv-num-nodes">Number of nodes (2–500)
+                <input id="adv-num-nodes" type="number" min="2" max="500" name="numNodes" th:value="${advancedForm.numNodes}" required>
+            </label>
+            <label for="adv-num-edges">Number of edges
+                <input id="adv-num-edges" type="number" min="0" max="100000" name="numEdges" th:value="${advancedForm.numEdges}" required>
+            </label>
+            <label for="adv-attack-budget">Attack budget
+                <input id="adv-attack-budget" type="number" min="0" max="10000" name="attackBudget" th:value="${advancedForm.attackBudget}" required>
+            </label>
+            <label for="adv-defense-budget">Defense budget
+                <input id="adv-defense-budget" type="number" min="0" max="10000" name="defenseBudget" th:value="${advancedForm.defenseBudget}" required>
+            </label>
+            <label for="adv-recovery-budget">Recovery budget
+                <input id="adv-recovery-budget" type="number" min="0" max="10000" name="recoveryBudget" th:value="${advancedForm.recoveryBudget}" required>
+            </label>
+            <label for="adv-rounds">Rounds
+                <input id="adv-rounds" type="number" min="1" max="100" name="rounds" th:value="${advancedForm.rounds}" required>
+            </label>
+            <label for="adv-algorithm">Posture mode (NORMAL / SHCS / CPHS)
+                <select id="adv-algorithm" name="algorithmType" required>
+                    <option th:each="algorithm : ${algorithms}"
+                            th:value="${algorithm}"
+                            th:text="${algorithm}"
+                            th:selected="${advancedForm.algorithmType == algorithm}">
+                    </option>
+                </select>
+            </label>
+            <label for="adv-seed">Optional seed (deterministic replay)
+                <input id="adv-seed" type="number" min="0" name="seed" th:value="${advancedForm.seed}">
+            </label>
+            <label class="checkbox">
+                <input type="checkbox" name="enableMTD" value="true" th:checked="${advancedForm.enableMTD}">
+                Enable moving target defense (MTD)
+            </label>
+            <label class="checkbox">
+                <input type="checkbox" name="enableDeception" value="true" th:checked="${advancedForm.enableDeception}">
+                Enable deception / honeypots
+            </label>
+            <div class="full-width">
+                <button type="submit">Run advanced simulation</button>
+            </div>
+        </form>
+    </section>
+
+    <section th:if="${advancedResult}" class="card">
+        <h2>Advanced summary metrics</h2>
+        <div class="table-scroll">
+        <table>
+            <tbody>
+            <tr><th>Advanced Simulation Run ID</th><td th:text="${advancedResult.advancedSimulationRunId}"></td></tr>
+            <tr><th>Algorithm</th><td th:text="${advancedResult.algorithmType}"></td></tr>
+            <tr><th>Seed Used</th><td th:text="${advancedResult.seed}"></td></tr>
+            <tr><th>Resilience Score</th><td th:text="${advancedResult.resilienceScore}"></td></tr>
+            <tr><th>Attack Efficiency</th><td th:text="${advancedResult.attackEfficiency}"></td></tr>
+            <tr><th>Defense Efficiency</th><td th:text="${advancedResult.defenseEfficiency}"></td></tr>
+            <tr><th>Deception Effectiveness</th><td th:text="${advancedResult.deceptionEffectiveness}"></td></tr>
+            <tr><th>MTD Effectiveness</th><td th:text="${advancedResult.mtdEffectiveness}"></td></tr>
+            <tr><th>Detection Rate</th><td th:text="${advancedResult.detectionRate}"></td></tr>
+            <tr><th>Mean compromise round index</th><td th:text="${advancedResult.meanTimeToCompromise}"></td></tr>
+            <tr><th>Final Compromised Nodes</th><td th:text="${advancedResult.finalCompromisedNodes}"></td></tr>
+            <tr><th>Final Protected Nodes</th><td th:text="${advancedResult.finalProtectedNodes}"></td></tr>
+            <tr><th>Attacker Utility</th><td th:text="${advancedResult.attackerUtility}"></td></tr>
+            <tr><th>Defender Utility</th><td th:text="${advancedResult.defenderUtility}"></td></tr>
+            <tr><th>Created At</th><td th:text="${advancedResult.createdAt}"></td></tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+
+    <section th:unless="${advancedResult}" class="card">
+        <h2>Advanced Summary Metrics</h2>
+        <p>No advanced simulation run is available yet. Submit the form above to run one.</p>
+    </section>
+
+    <section class="card" th:if="${advancedResult}">
+        <h2>Advanced Charts</h2>
+        <div class="chart-grid">
+            <div class="chart-card full-width">
+                <h3>Compromise Timeline</h3>
+                <canvas id="compromiseTimelineChart"></canvas>
+            </div>
+            <div class="chart-card full-width">
+                <h3>Utility Trend By Round</h3>
+                <canvas id="utilityTrendChart"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <section class="card" th:if="${advancedResult}">
+        <h2>Round-by-Round Metrics</h2>
+        <div class="table-scroll">
+        <table>
+            <thead>
+            <tr>
+                <th>Round</th>
+                <th>Targeted</th>
+                <th>New Compromised</th>
+                <th>Total Compromised</th>
+                <th>Recovered</th>
+                <th>Detection Rate</th>
+                <th>Deception Eff</th>
+                <th>MTD Eff</th>
+                <th>Resilience</th>
+                <th>Atk Utility</th>
+                <th>Def Utility</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="detail : ${advancedResult.roundDetails}">
+                <td th:text="${detail.roundNumber}"></td>
+                <td th:text="${detail.targetedNodes}"></td>
+                <td th:text="${detail.newlyCompromisedNodes}"></td>
+                <td th:text="${detail.compromisedNodeCount}"></td>
+                <td th:text="${detail.recoveredNodes}"></td>
+                <td th:text="${detail.detectionRate}"></td>
+                <td th:text="${detail.deceptionEffectiveness}"></td>
+                <td th:text="${detail.mtdEffectiveness}"></td>
+                <td th:text="${detail.resilienceScore}"></td>
+                <td th:text="${detail.attackerUtility}"></td>
+                <td th:text="${detail.defenderUtility}"></td>
+            </tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>Recent Advanced Runs</h2>
+        <div class="table-scroll">
+        <table>
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Algorithm</th>
+                <th>Seed</th>
+                <th>Resilience</th>
+                <th>Attack Eff</th>
+                <th>Defense Eff</th>
+                <th>Final Compromised</th>
+                <th>Created At</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:if="${#lists.isEmpty(advancedHistoryPreview)}">
+                <td colspan="8">No advanced simulation history found. Run an advanced scenario to create history.</td>
+            </tr>
+            <tr th:each="run : ${advancedHistoryPreview}">
+                <td th:text="${run.advancedSimulationRunId}"></td>
+                <td th:text="${run.algorithmType}"></td>
+                <td th:text="${run.seed}"></td>
+                <td th:text="${run.resilienceScore}"></td>
+                <td th:text="${run.attackEfficiency}"></td>
+                <td th:text="${run.defenseEfficiency}"></td>
+                <td th:text="${run.finalCompromisedNodes}"></td>
+                <td th:text="${run.createdAt}"></td>
+            </tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script th:src="@{/js/app-charts.js}"></script>
+<script th:inline="javascript" th:if="${advancedResult}">
+    const advancedResult = /*[[${advancedResult}]]*/ null;
+
+    const timeline = (advancedResult && Array.isArray(advancedResult.compromiseTimeline)) ? advancedResult.compromiseTimeline : [];
+    const details = (advancedResult && Array.isArray(advancedResult.roundDetails)) ? advancedResult.roundDetails : [];
+
+    const timelineLabels = timeline.map((_, index) => `Round ${index + 1}`);
+    const detailLabels = details.map(d => `Round ${d.roundNumber}`);
+
+    window.NsCharts.createChart('compromiseTimelineChart', 'line', timelineLabels, [{
+        label: 'Compromise ratio (timeline)',
+        data: timeline,
+        borderColor: '#eb5757',
+        backgroundColor: 'rgba(235,87,87,0.2)',
+        fill: true,
+        tension: 0.25
+    }], {
+        scales: {
+            y: { beginAtZero: true, max: 1, title: { display: true, text: 'Ratio (0–1)' } },
+            x: { title: { display: true, text: 'Round (timeline index)' } }
+        },
+        plugins: { legend: { position: 'bottom' } }
+    });
+
+    const attackerUtilities = details.map(item => item.attackerUtility);
+    const defenderUtilities = details.map(item => item.defenderUtility);
+
+    window.NsCharts.createChart('utilityTrendChart', 'line', detailLabels, [
+        {
+            label: 'Attacker utility',
+            data: attackerUtilities,
+            borderColor: '#f2994a',
+            backgroundColor: 'rgba(242,153,74,0.15)',
+            fill: false,
+            tension: 0.2
+        },
+        {
+            label: 'Defender utility',
+            data: defenderUtilities,
+            borderColor: '#2d9cdb',
+            backgroundColor: 'rgba(45,156,219,0.15)',
+            fill: false,
+            tension: 0.2
+        }
+    ], {
+        scales: {
+            y: { title: { display: true, text: 'Utility' } },
+            x: { title: { display: true, text: 'Round' } }
+        },
+        plugins: { legend: { position: 'bottom' } }
+    });
+</script>
+</body>
+</html>

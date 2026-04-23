@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="fragments :: head('Base simulation detail — Network Security Lab')"></head>
+<body>
+<div class="container">
+    <div th:replace="fragments :: appChrome('Base simulation detail', 'Immutable snapshot of a persisted base simulation run.', 'base-history')"></div>
+
+    <div th:replace="fragments :: notice"></div>
+
+    <section class="card">
+        <h2 th:text="${'Run #' + run.id}"></h2>
+        <div class="table-scroll">
+        <table>
+            <tbody>
+            <tr><th>Created At</th><td th:text="${run.createdAt}"></td></tr>
+            <tr><th>Algorithm Type</th><td th:text="${run.algorithmType}"></td></tr>
+            <tr><th>Linked Message ID</th><td th:text="${run.messageId}"></td></tr>
+            <tr><th>Number of Nodes</th><td th:text="${run.numNodes}"></td></tr>
+            <tr><th>Number of Edges</th><td th:text="${run.numEdges}"></td></tr>
+            <tr><th>Attack Budget</th><td th:text="${run.attackBudget}"></td></tr>
+            <tr><th>Defense Budget</th><td th:text="${run.defenseBudget}"></td></tr>
+            <tr><th>Recovery Budget</th><td th:text="${run.recoveryBudget}"></td></tr>
+            <tr><th>Initial Connectivity</th><td th:text="${run.initialConnectivity}"></td></tr>
+            <tr><th>After Attack Connectivity</th><td th:text="${run.afterAttackConnectivity}"></td></tr>
+            <tr><th>After Recovery Connectivity</th><td th:text="${run.afterRecoveryConnectivity}"></td></tr>
+            <tr><th>Nodes Lost</th><td th:text="${run.nodesLost}"></td></tr>
+            <tr><th>Edges Lost</th><td th:text="${run.edgesLost}"></td></tr>
+            <tr><th>Recovery Success Rate</th><td th:text="${run.recoveryRate}"></td></tr>
+            <tr><th>Defender Utility</th><td th:text="${run.defenderUtility}"></td></tr>
+            <tr><th>Attacker Utility</th><td th:text="${run.attackerUtility}"></td></tr>
+            <tr><th>Effective Attack Success Probability</th><td th:text="${run.effectiveAttackSuccessProbability}"></td></tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+</div>
+</body>
+</html>

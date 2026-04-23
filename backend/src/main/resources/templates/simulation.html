@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="fragments :: head('Base simulation — Network Security Lab')"></head>
+<body>
+<div class="container">
+    <div th:replace="fragments :: appChrome('Base simulation', 'Single-run graph game: attack → defense → recovery, persisted to history.', 'base')"></div>
+
+    <div th:replace="fragments :: notice"></div>
+
+    <section class="card">
+        <h2>Run simulation scenario</h2>
+        <p>Configure a network and budgets, select algorithm, then run a full defense-attack-recovery simulation.</p>
+        <form method="post" th:action="@{/simulation/dashboard/run}" class="form-grid-2">
+            <label for="base-num-nodes">Number of nodes (2–300)
+                <input id="base-num-nodes" type="number" min="2" max="300" name="numNodes" th:value="${form.numNodes}" required>
+            </label>
+            <label for="base-num-edges">Number of edges
+                <input id="base-num-edges" type="number" min="0" max="50000" name="numEdges" th:value="${form.numEdges}" required>
+            </label>
+            <label for="base-attack-budget">Attack budget
+                <input id="base-attack-budget" type="number" min="0" max="10000" name="attackBudget" th:value="${form.attackBudget}" required>
+            </label>
+            <label for="base-defense-budget">Defense budget
+                <input id="base-defense-budget" type="number" min="0" max="10000" name="defenseBudget" th:value="${form.defenseBudget}" required>
+            </label>
+            <label for="base-recovery-budget">Recovery budget
+                <input id="base-recovery-budget" type="number" min="0" max="10000" name="recoveryBudget" th:value="${form.recoveryBudget}" required>
+            </label>
+            <label for="base-algorithm">Algorithm type
+                <select id="base-algorithm" name="algorithmType" required>
+                    <option th:each="algorithm : ${algorithms}"
+                            th:value="${algorithm}"
+                            th:text="${algorithm}"
+                            th:selected="${form.algorithmType == algorithm}">
+                    </option>
+                </select>
+            </label>
+            <div class="full-width">
+                <button type="submit">Run simulation</button>
+            </div>
+        </form>
+    </section>
+
+    <section th:if="${currentResult}" class="card">
+        <h2>Current result summary</h2>
+        <div class="table-scroll">
+        <table>
+            <tbody>
+            <tr><th>Simulation Run ID</th><td th:text="${currentResult.simulationRunId}"></td></tr>
+            <tr><th>Algorithm Type</th><td th:text="${currentResult.algorithmType}"></td></tr>
+            <tr><th>Initial Connectivity</th><td th:text="${currentResult.initialConnectivity}"></td></tr>
+            <tr><th>After Attack Connectivity</th><td th:text="${currentResult.afterAttackConnectivity}"></td></tr>
+            <tr><th>After Recovery Connectivity</th><td th:text="${currentResult.afterRecoveryConnectivity}"></td></tr>
+            <tr><th>Nodes Lost</th><td th:text="${currentResult.nodesLost}"></td></tr>
+            <tr><th>Edges Lost</th><td th:text="${currentResult.edgesLost}"></td></tr>
+            <tr><th>Recovery Success Rate</th><td th:text="${currentResult.recoveryRate}"></td></tr>
+            <tr><th>Defender Utility</th><td th:text="${currentResult.defenderUtility}"></td></tr>
+            <tr><th>Attacker Utility</th><td th:text="${currentResult.attackerUtility}"></td></tr>
+            <tr><th>Effective Attack Success Probability</th><td th:text="${currentResult.effectiveAttackSuccessProbability}"></td></tr>
+            <tr><th>Created At</th><td th:text="${currentResult.createdAt}"></td></tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+
+    <section th:unless="${currentResult}" class="card">
+        <h2>Current result summary</h2>
+        <p>No simulation run is available in this session yet. Submit the form above to run one.</p>
+    </section>
+
+    <section class="card" th:if="${currentResult != null or comparisonResult != null}">
+        <h2>Visualization</h2>
+        <p class="muted" th:if="${currentResult == null}">
+            Connectivity/utility charts appear after you run a simulation in this session.
+        </p>
+        <div class="chart-grid">
+            <div class="chart-card" th:if="${currentResult != null}">
+                <h3>Connectivity across stages</h3>
+                <canvas id="connectivityChart"></canvas>
+            </div>
+            <div class="chart-card" th:if="${currentResult != null}">
+                <h3>Defender utility vs attacker utility</h3>
+                <canvas id="utilityChart"></canvas>
+            </div>
+            <div class="chart-card full-width" th:if="${comparisonResult != null}">
+                <h3>Modeled attack success probability (posture comparison)</h3>
+                <p class="muted">Uses the same sampled scenario for NORMAL vs SHCS vs CPHS (see Base compare for the full table).</p>
+                <canvas id="attackProbabilityChart"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <section class="card" th:unless="${currentResult != null or comparisonResult != null}">
+        <h2>Visualization</h2>
+        <p>No chartable dashboard snapshot is available yet.</p>
+    </section>
+
+    <section class="card">
+        <h2>Recent simulation runs</h2>
+        <div class="table-scroll">
+        <table>
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Algorithm</th>
+                <th>Initial</th>
+                <th>After Attack</th>
+                <th>After Recovery</th>
+                <th>Created At</th>
+                <th>Details</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:if="${#lists.isEmpty(historyPreview)}">
+                <td colspan="7">No simulation history available yet. Run a scenario to create history.</td>
+            </tr>
+            <tr th:each="run : ${historyPreview}">
+                <td th:text="${run.id}"></td>
+                <td th:text="${run.algorithmType}"></td>
+                <td th:text="${run.initialConnectivity}"></td>
+                <td th:text="${run.afterAttackConnectivity}"></td>
+                <td th:text="${run.afterRecoveryConnectivity}"></td>
+                <td th:text="${run.createdAt}"></td>
+                <td><a th:href="@{'/simulation/history-page/' + ${run.id}}">View</a></td>
+            </tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script th:src="@{/js/app-charts.js}"></script>
+<script th:inline="javascript">
+    const currentResult = /*[[${currentResult}]]*/ null;
+    const comparisonItems = /*[[${comparisonResult != null ? comparisonResult.items : T(java.util.Collections).emptyList()}]]*/ [];
+
+    if (currentResult) {
+        const connectivityData = [currentResult.initialConnectivity, currentResult.afterAttackConnectivity, currentResult.afterRecoveryConnectivity];
+        window.NsCharts.createChart('connectivityChart', 'bar',
+            ['Initial', 'After attack', 'After recovery'],
+            [{
+                label: 'Connectivity',
+                data: connectivityData,
+                backgroundColor: ['#2f80ed', '#eb5757', '#27ae60']
+            }],
+            {
+                scales: {
+                    y: { beginAtZero: true, max: 1, title: { display: true, text: 'Connectivity (0–1)' } },
+                    x: { title: { display: true, text: 'Stage' } }
+                }
+            }
+        );
+
+        const utilityData = [currentResult.defenderUtility, currentResult.attackerUtility];
+        window.NsCharts.createChart('utilityChart', 'bar',
+            ['Defender utility', 'Attacker utility'],
+            [{
+                label: 'Utility',
+                data: utilityData,
+                backgroundColor: ['#2d9cdb', '#f2994a']
+            }],
+            {
+                scales: {
+                    y: { title: { display: true, text: 'Utility' } },
+                    x: { title: { display: true, text: 'Role' } }
+                }
+            }
+        );
+    }
+
+    if (comparisonItems && comparisonItems.length) {
+        const algorithmLabels = comparisonItems.map(item => item.algorithmType);
+        const attackSuccessValues = comparisonItems.map(item => item.effectiveAttackSuccessProbability);
+
+        window.NsCharts.createChart('attackProbabilityChart', 'bar',
+            algorithmLabels,
+            [{
+                label: 'Effective attack success probability',
+                data: attackSuccessValues,
+                backgroundColor: '#1f5fb8'
+            }],
+            {
+                scales: {
+                    y: { beginAtZero: true, max: 1, title: { display: true, text: 'Probability (0–1)' } },
+                    x: { title: { display: true, text: 'Posture mode' } }
+                }
+            }
+        );
+    }
+</script>
+</body>
+</html>

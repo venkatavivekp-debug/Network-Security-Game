@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="fragments :: head('Evaluation compare — Network Security Lab')"></head>
+<body>
+<div class="container">
+    <div th:replace="fragments :: appChrome('Evaluation compare', 'Side-by-side benchmarks and defense sweeps using the same seeding rules as the evaluation runner.', 'eval-compare')"></div>
+
+    <div th:replace="fragments :: notice"></div>
+
+    <section class="card">
+        <h2>Algorithm Security Comparison (NORMAL vs SHCS vs CPHS)</h2>
+        <p>
+            This comparison fixes the sampled attack-graph topology per seed, then only changes the modeled security posture knob.
+            Use <strong>VARIED</strong> with <code>repetitions &gt; 1</code> for Monte Carlo-style aggregation, or <strong>FIXED</strong> with <code>repetitions = 1</code> for an exact replay benchmark.
+        </p>
+        <form method="post" th:action="@{/simulation/evaluation-compare/security}" class="form-grid-2">
+            <label>Scenario Name
+                <input type="text" name="scenarioName" minlength="3" maxlength="120" th:value="${securityForm.scenarioName}" required>
+            </label>
+            <label>Nodes
+                <input type="number" min="2" max="500" name="numNodes" th:value="${securityForm.numNodes}" required>
+            </label>
+            <label>Edges
+                <input type="number" min="0" max="100000" name="numEdges" th:value="${securityForm.numEdges}" required>
+            </label>
+            <label>Attack Budget
+                <input type="number" min="0" max="10000" name="attackBudget" th:value="${securityForm.attackBudget}" required>
+            </label>
+            <label>Defense Budget
+                <input type="number" min="0" max="10000" name="defenseBudget" th:value="${securityForm.defenseBudget}" required>
+            </label>
+            <label>Recovery Budget
+                <input type="number" min="0" max="10000" name="recoveryBudget" th:value="${securityForm.recoveryBudget}" required>
+            </label>
+            <label>Rounds
+                <input type="number" min="1" max="100" name="rounds" th:value="${securityForm.rounds}" required>
+            </label>
+            <label>Repetitions
+                <input type="number" min="1" max="200" name="repetitions" th:value="${securityForm.repetitions}" required>
+            </label>
+            <label>Seed Strategy
+                <select name="seedStrategy" required>
+                    <option th:each="seedMode : ${seedStrategies}"
+                            th:value="${seedMode}"
+                            th:text="${seedMode}"
+                            th:selected="${securityForm.seedStrategy == seedMode}">
+                    </option>
+                </select>
+            </label>
+            <label>Base Seed (optional)
+                <input type="number" min="0" name="baseSeed" th:value="${securityForm.baseSeed}">
+            </label>
+            <label class="checkbox">
+                <input type="checkbox" name="enableMTD" value="true" th:checked="${securityForm.enableMTD}">
+                Enable MTD
+            </label>
+            <label class="checkbox">
+                <input type="checkbox" name="enableDeception" value="true" th:checked="${securityForm.enableDeception}">
+                Enable deception
+            </label>
+            <div class="full-width">
+                <button type="submit">Run security comparison</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2>Defense Comparison / Budget Sweep</h2>
+        <p>
+            Defense comparisons reuse the same scenario parameters and seeding rules as the evaluation runner.
+            Sweep modes validate ranges server-side to prevent accidental huge workloads.
+        </p>
+        <form method="post" th:action="@{/simulation/evaluation-compare/defense}" class="form-grid-2">
+            <label>Scenario Name
+                <input type="text" name="scenarioName" minlength="3" maxlength="120" th:value="${securityForm.scenarioName}" required>
+            </label>
+            <label>Mode
+                <select name="mode" required>
+                    <option th:each="mode : ${defenseModes}"
+                            th:value="${mode}"
+                            th:text="${mode}"
+                            th:selected="${defenseMode == mode}">
+                    </option>
+                </select>
+            </label>
+            <label>Algorithm
+                <select name="algorithmType" required>
+                    <option th:each="algorithm : ${algorithms}"
+                            th:value="${algorithm}"
+                            th:text="${algorithm}"
+                            th:selected="${securityForm.algorithmType == algorithm}">
+                    </option>
+                </select>
+            </label>
+            <label>Nodes
+                <input type="number" min="2" max="500" name="numNodes" th:value="${securityForm.numNodes}" required>
+            </label>
+            <label>Edges
+                <input type="number" min="0" max="100000" name="numEdges" th:value="${securityForm.numEdges}" required>
+            </label>
+            <label>Attack Budget
+                <input type="number" min="0" max="10000" name="attackBudget" th:value="${securityForm.attackBudget}" required>
+            </label>
+            <label>Defense Budget
+                <input type="number" min="0" max="10000" name="defenseBudget" th:value="${securityForm.defenseBudget}" required>
+            </label>
+            <label>Recovery Budget
+                <input type="number" min="0" max="10000" name="recoveryBudget" th:value="${securityForm.recoveryBudget}" required>
+            </label>
+            <label>Rounds
+                <input type="number" min="1" max="100" name="rounds" th:value="${securityForm.rounds}" required>
+            </label>
+            <label>Repetitions
+                <input type="number" min="1" max="200" name="repetitions" th:value="${securityForm.repetitions}" required>
+            </label>
+            <label>Seed Strategy
+                <select name="seedStrategy" required>
+                    <option th:each="seedMode : ${seedStrategies}"
+                            th:value="${seedMode}"
+                            th:text="${seedMode}"
+                            th:selected="${securityForm.seedStrategy == seedMode}">
+                    </option>
+                </select>
+            </label>
+            <label>Base Seed (optional)
+                <input type="number" min="0" name="baseSeed" th:value="${securityForm.baseSeed}">
+            </label>
+            <label>Sweep Start (budget modes)
+                <input type="number" min="0" name="sweepStart" th:value="${sweepStart}">
+            </label>
+            <label>Sweep End (budget modes)
+                <input type="number" min="0" name="sweepEnd" th:value="${sweepEnd}">
+            </label>
+            <label>Sweep Step (budget modes)
+                <input type="number" min="1" name="sweepStep" th:value="${sweepStep}">
+            </label>
+            <label class="checkbox">
+                <input type="checkbox" name="enableMTD" value="true" th:checked="${securityForm.enableMTD}">
+                Enable MTD
+            </label>
+            <label class="checkbox">
+                <input type="checkbox" name="enableDeception" value="true" th:checked="${securityForm.enableDeception}">
+                Enable deception
+            </label>
+            <div class="full-width">
+                <button type="submit">Run defense comparison</button>
+            </div>
+        </form>
+    </section>
+
+    <section th:if="${comparisonResult}" class="card">
+        <h2>Comparison Results</h2>
+        <p>
+            <strong>Comparison Type:</strong>
+            <span th:text="${comparisonResult.comparisonType}"></span>
+        </p>
+        <div class="table-scroll">
+        <table>
+            <thead>
+            <tr>
+                <th>Label</th>
+                <th>Algorithm</th>
+                <th>MTD</th>
+                <th>Deception</th>
+                <th>Attack Budget</th>
+                <th>Defense Budget</th>
+                <th>Avg Compromise Ratio</th>
+                <th>Avg Resilience Score</th>
+                <th>Avg Attack Eff</th>
+                <th>Avg Defense Eff</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="item : ${comparisonResult.items}">
+                <td th:text="${item.label}"></td>
+                <td th:text="${item.algorithmType}"></td>
+                <td th:text="${item.enableMTD}"></td>
+                <td th:text="${item.enableDeception}"></td>
+                <td th:text="${item.attackBudget}"></td>
+                <td th:text="${item.defenseBudget}"></td>
+                <td th:text="${item.aggregateMetrics.averageCompromiseRatio}"></td>
+                <td th:text="${item.aggregateMetrics.averageResilienceScore}"></td>
+                <td th:text="${item.aggregateMetrics.averageAttackEfficiency}"></td>
+                <td th:text="${item.aggregateMetrics.averageDefenseEfficiency}"></td>
+            </tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+
+    <section th:if="${comparisonResult}" class="card">
+        <h2>Comparison Charts</h2>
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3>Compromise Ratio Comparison</h3>
+                <canvas id="comparisonCompromiseChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Resilience Score Comparison</h3>
+                <canvas id="comparisonResilienceChart"></canvas>
+            </div>
+            <div class="chart-card full-width">
+                <h3>Attack vs Defense Efficiency</h3>
+                <canvas id="comparisonEfficiencyChart"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <section th:unless="${comparisonResult}" class="card">
+        <h2>Comparison Results</h2>
+        <p>No comparison result is available yet. Run one of the comparison forms above.</p>
+    </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script th:src="@{/js/app-charts.js}"></script>
+<script th:inline="javascript" th:if="${comparisonResult}">
+    const comparisonResult = /*[[${comparisonResult}]]*/ null;
+    const labels = comparisonResult.items.map(item => item.label);
+    const compromiseValues = comparisonResult.items.map(item => item.aggregateMetrics.averageCompromiseRatio);
+    const resilienceValues = comparisonResult.items.map(item => item.aggregateMetrics.averageResilienceScore);
+    const attackEffValues = comparisonResult.items.map(item => item.aggregateMetrics.averageAttackEfficiency);
+    const defenseEffValues = comparisonResult.items.map(item => item.aggregateMetrics.averageDefenseEfficiency);
+
+    window.NsCharts.createChart('comparisonCompromiseChart', 'bar', labels, [{
+        label: 'Avg compromise ratio',
+        data: compromiseValues,
+        backgroundColor: '#eb5757'
+    }], {
+        scales: {
+            y: { beginAtZero: true, max: 1, title: { display: true, text: 'Ratio (0–1)' } },
+            x: { title: { display: true, text: 'Scenario label' } }
+        },
+        plugins: { legend: { display: false } }
+    });
+
+    window.NsCharts.createChart('comparisonResilienceChart', 'bar', labels, [{
+        label: 'Avg resilience score',
+        data: resilienceValues,
+        backgroundColor: '#27ae60'
+    }], {
+        scales: {
+            y: { beginAtZero: true, max: 1, title: { display: true, text: 'Score (0–1)' } },
+            x: { title: { display: true, text: 'Scenario label' } }
+        },
+        plugins: { legend: { display: false } }
+    });
+
+    window.NsCharts.createChart('comparisonEfficiencyChart', 'bar', labels, [
+        { label: 'Avg attack efficiency', data: attackEffValues, backgroundColor: '#f2994a' },
+        { label: 'Avg defense efficiency', data: defenseEffValues, backgroundColor: '#2d9cdb' }
+    ], {
+        scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'Efficiency' } },
+            x: { title: { display: true, text: 'Scenario label' } }
+        },
+        plugins: { legend: { position: 'bottom' } }
+    });
+</script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<body>
+<th:block th:fragment="head (title)">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${title}">Network Security Lab</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</th:block>
+
+<th:block th:fragment="notice">
+    <div th:if="${notice}" class="notice" role="status" th:text="${notice}"></div>
+</th:block>
+
+<th:block th:fragment="appChrome (pageTitle, subtitle, active)">
+    <header class="app-header">
+        <div class="brand">
+            <div class="brand-title" th:text="${pageTitle}">Page</div>
+            <div class="brand-subtitle" th:if="${subtitle != null and !#strings.isEmpty(subtitle)}" th:text="${subtitle}"></div>
+            <div class="brand-subtitle muted" th:unless="${subtitle != null and !#strings.isEmpty(subtitle)}">Network Security Lab</div>
+        </div>
+
+        <nav class="app-nav" aria-label="Primary">
+            <a href="/send" th:classappend="${active == 'send'} ? ' is-active' : ''">Send</a>
+            <a href="/receive" th:classappend="${active == 'receive'} ? ' is-active' : ''">Receive</a>
+            <span class="nav-sep" aria-hidden="true">|</span>
+            <a href="/simulation/dashboard" th:classappend="${active == 'base'} ? ' is-active' : ''">Base sim</a>
+            <a href="/simulation/history-page" th:classappend="${active == 'base-history'} ? ' is-active' : ''">Base history</a>
+            <a href="/simulation/compare-page" th:classappend="${active == 'base-compare'} ? ' is-active' : ''">Base compare</a>
+            <span class="nav-sep" aria-hidden="true">|</span>
+            <a href="/simulation/advanced-dashboard" th:classappend="${active == 'advanced'} ? ' is-active' : ''">Advanced</a>
+            <span class="nav-sep" aria-hidden="true">|</span>
+            <a href="/simulation/evaluation-dashboard" th:classappend="${active == 'eval'} ? ' is-active' : ''">Evaluation</a>
+            <a href="/simulation/evaluation-history" th:classappend="${active == 'eval-history'} ? ' is-active' : ''">Eval history</a>
+            <a href="/simulation/evaluation-compare" th:classappend="${active == 'eval-compare'} ? ' is-active' : ''">Eval compare</a>
+            <span class="nav-sep" aria-hidden="true">|</span>
+            <a href="/simulation/export">Export sim CSV</a>
+            <a href="/simulation/evaluate/export">Export eval CSV</a>
+            <span class="nav-sep" aria-hidden="true">|</span>
+            <a href="/logout">Logout</a>
+        </nav>
+    </header>
+</th:block>
+</body>
+</html>

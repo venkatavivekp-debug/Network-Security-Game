@@ -1,0 +1,45 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: nsg-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root}
+      MYSQL_DATABASE: ${DB_NAME:-network_security_game}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${DB_PASSWORD:-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nsg-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_URL: jdbc:mysql://mysql:3306/${DB_NAME:-network_security_game}?useSSL=false&allowPublicKeyRetrieval=true
+      DB_USERNAME: root
+      DB_PASSWORD: ${DB_PASSWORD:-root}
+      SERVER_PORT: 8080
+      APP_CRYPTO_MASTER_KEY: ${APP_CRYPTO_MASTER_KEY}
+      APP_CRYPTO_SHCS_KEY: ${APP_CRYPTO_SHCS_KEY}
+      APP_SEED_DEMO_DATA: ${APP_SEED_DEMO_DATA:-true}
+      APP_DEMO_SENDER_USERNAME: ${APP_DEMO_SENDER_USERNAME:-demo_sender}
+      APP_DEMO_SENDER_PASSWORD: ${APP_DEMO_SENDER_PASSWORD:-DemoSender#123}
+      APP_DEMO_RECEIVER_USERNAME: ${APP_DEMO_RECEIVER_USERNAME:-demo_receiver}
+      APP_DEMO_RECEIVER_PASSWORD: ${APP_DEMO_RECEIVER_PASSWORD:-DemoReceiver#123}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+
+volumes:
+  mysql_data:

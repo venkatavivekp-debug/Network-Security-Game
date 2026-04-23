@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="fragments :: head('Receiver console — Network Security Lab')"></head>
+<body>
+<div class="container">
+    <div th:replace="fragments :: appChrome('Receiver console', 'Decrypt inbound ciphertext and inspect algorithm-specific metadata.', 'receive')"></div>
+
+    <div th:replace="fragments :: notice"></div>
+
+    <section th:if="${decryptedMessage}" class="card">
+        <h2>Decryption result</h2>
+        <p><strong>Message ID:</strong> <span th:text="${decryptedMessage.messageId}"></span></p>
+        <p><strong>Algorithm:</strong> <span th:text="${decryptedMessage.algorithmType}"></span></p>
+        <p><strong>Decrypted content:</strong> <span th:text="${decryptedMessage.decryptedContent}"></span></p>
+        <p><strong>Puzzle solve time (ms):</strong> <span th:text="${decryptedMessage.puzzleSolveTimeMs}"></span></p>
+    </section>
+
+    <section class="card">
+        <h2>Received messages</h2>
+        <p>Decrypt messages. The “message-layer attack probe” link opens a JSON API response in a new tab.</p>
+        <div class="table-scroll">
+        <table>
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Sender</th>
+                <th>Algorithm</th>
+                <th>Encrypted Payload</th>
+                <th>Created At</th>
+                <th>Decrypt</th>
+                <th>Attack Simulation</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:if="${#lists.isEmpty(messages)}">
+                <td colspan="7">No messages available yet. Ask a sender to submit a secure message.</td>
+            </tr>
+            <tr th:each="message : ${messages}">
+                <td th:text="${message.id}"></td>
+                <td th:text="${message.senderUsername}"></td>
+                <td th:text="${message.algorithmType}"></td>
+                <td class="mono" th:text="${message.encryptedContent}"></td>
+                <td th:text="${message.createdAt}"></td>
+                <td>
+                    <form method="post" th:action="@{'/ui/decrypt/' + ${message.id}}">
+                        <button type="submit">Decrypt</button>
+                    </form>
+                </td>
+                <td>
+                    <a th:href="@{'/attack/simulate/' + ${message.id}}" target="_blank" rel="noopener noreferrer">Open attack probe (JSON)</a>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+</div>
+</body>
+</html>

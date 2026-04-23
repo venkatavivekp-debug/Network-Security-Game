@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="fragments :: head('Access — Network Security Lab')"></head>
+<body>
+<div class="container">
+    <main>
+        <h1 class="brand-title">Network Security Lab</h1>
+        <p class="subtitle">Game-theoretic messaging + graph simulations for comparative security experiments</p>
+
+        <div th:replace="fragments :: notice"></div>
+
+    <div class="card-grid">
+        <section class="card">
+            <h2>Sign In</h2>
+            <p>Use your registered username and password to access sender/receiver and simulation modules.</p>
+            <form method="post" th:action="@{/ui/login}">
+                <label for="login-username">Username
+                    <input id="login-username" type="text" name="username" minlength="3" maxlength="40" autocomplete="username" required>
+                </label>
+                <label for="login-password">Password
+                    <input id="login-password" type="password" name="password" minlength="8" maxlength="100" autocomplete="current-password" required>
+                </label>
+                <button type="submit">Sign in</button>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2>Create Account</h2>
+            <p>Username: 3-40 chars, letters/numbers/._- only. Password: include uppercase, lowercase, number, special char.</p>
+            <form method="post" th:action="@{/ui/register}">
+                <label for="register-username">Username
+                    <input id="register-username" type="text" name="username" minlength="3" maxlength="40" pattern="[A-Za-z0-9._-]+" autocomplete="username" required>
+                </label>
+                <label for="register-password">Password
+                    <input id="register-password" type="password" name="password" minlength="8" maxlength="100" autocomplete="new-password" required>
+                </label>
+                <label for="register-role">Role
+                    <select id="register-role" name="role" required>
+                        <option value="SENDER">SENDER</option>
+                        <option value="RECEIVER">RECEIVER</option>
+                    </select>
+                </label>
+                <button type="submit">Create account</button>
+            </form>
+        </section>
+    </div>
+    </main>
+</div>
+</body>
+</html>

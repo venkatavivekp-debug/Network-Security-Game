@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="fragments :: head('Base scenario compare — Network Security Lab')"></head>
+<body>
+<div class="container">
+    <div th:replace="fragments :: appChrome('Base scenario compare', 'Runs the same sampled scenario for NORMAL vs SHCS vs CPHS and compares outcomes side-by-side.', 'base-compare')"></div>
+
+    <div th:replace="fragments :: notice"></div>
+
+    <section class="card">
+        <h2>Compare NORMAL vs SHCS vs CPHS</h2>
+        <p>This runs the same network scenario for all three algorithms and compares outcomes side-by-side.</p>
+        <form method="post" th:action="@{/simulation/compare-page/run}" class="form-grid-2">
+            <label for="cmp-num-nodes">Number of nodes (2–300)
+                <input id="cmp-num-nodes" type="number" min="2" max="300" name="numNodes" th:value="${compareForm.numNodes}" required>
+            </label>
+            <label for="cmp-num-edges">Number of edges
+                <input id="cmp-num-edges" type="number" min="0" max="50000" name="numEdges" th:value="${compareForm.numEdges}" required>
+            </label>
+            <label for="cmp-attack-budget">Attack budget
+                <input id="cmp-attack-budget" type="number" min="0" max="10000" name="attackBudget" th:value="${compareForm.attackBudget}" required>
+            </label>
+            <label for="cmp-defense-budget">Defense budget
+                <input id="cmp-defense-budget" type="number" min="0" max="10000" name="defenseBudget" th:value="${compareForm.defenseBudget}" required>
+            </label>
+            <label for="cmp-recovery-budget">Recovery budget
+                <input id="cmp-recovery-budget" type="number" min="0" max="10000" name="recoveryBudget" th:value="${compareForm.recoveryBudget}" required>
+            </label>
+            <div class="full-width">
+                <button type="submit">Run comparison</button>
+            </div>
+        </form>
+    </section>
+
+    <section th:if="${comparisonResult}" class="card">
+        <h2>Comparison Results</h2>
+        <div class="table-scroll">
+        <table>
+            <thead>
+            <tr>
+                <th>Algorithm</th>
+                <th>Initial</th>
+                <th>After Attack</th>
+                <th>After Recovery</th>
+                <th>Nodes Lost</th>
+                <th>Edges Lost</th>
+                <th>Recovery Rate</th>
+                <th>Def Utility</th>
+                <th>Atk Utility</th>
+                <th>Attack Success Prob</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="item : ${comparisonResult.items}">
+                <td th:text="${item.algorithmType}"></td>
+                <td th:text="${item.initialConnectivity}"></td>
+                <td th:text="${item.afterAttackConnectivity}"></td>
+                <td th:text="${item.afterRecoveryConnectivity}"></td>
+                <td th:text="${item.nodesLost}"></td>
+                <td th:text="${item.edgesLost}"></td>
+                <td th:text="${item.recoveryRate}"></td>
+                <td th:text="${item.defenderUtility}"></td>
+                <td th:text="${item.attackerUtility}"></td>
+                <td th:text="${item.effectiveAttackSuccessProbability}"></td>
+            </tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+
+    <section th:unless="${comparisonResult}" class="card">
+        <h2>Comparison Results</h2>
+        <p>No comparison has been run yet. Submit the form above to generate results.</p>
+    </section>
+
+    <section th:if="${comparisonResult}" class="card">
+        <h2>Comparison Charts</h2>
+        <div class="chart-grid">
+            <div class="chart-card full-width">
+                <h3>Connectivity by Stage and Algorithm</h3>
+                <canvas id="comparisonConnectivityChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Defender vs Attacker Utility</h3>
+                <canvas id="comparisonUtilityChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Attack Success Probability</h3>
+                <canvas id="comparisonProbabilityChart"></canvas>
+            </div>
+        </div>
+    </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script th:src="@{/js/app-charts.js}"></script>
+<script th:inline="javascript" th:if="${comparisonResult}">
+    const comparisonItems = /*[[${comparisonResult.items}]]*/ [];
+    const labels = comparisonItems.map(item => item.algorithmType);
+
+    const initialSeries = comparisonItems.map(item => item.initialConnectivity);
+    const attackSeries = comparisonItems.map(item => item.afterAttackConnectivity);
+    const recoverySeries = comparisonItems.map(item => item.afterRecoveryConnectivity);
+
+    window.NsCharts.createChart('comparisonConnectivityChart', 'bar', labels, [
+        { label: 'Initial connectivity', data: initialSeries, backgroundColor: '#2f80ed' },
+        { label: 'After attack', data: attackSeries, backgroundColor: '#eb5757' },
+        { label: 'After recovery', data: recoverySeries, backgroundColor: '#27ae60' }
+    ], {
+        scales: {
+            y: { beginAtZero: true, max: 1, title: { display: true, text: 'Connectivity (0–1)' } },
+            x: { title: { display: true, text: 'Posture mode' } }
+        },
+        plugins: { legend: { position: 'bottom' } }
+    });
+
+    const defenderSeries = comparisonItems.map(item => item.defenderUtility);
+    const attackerSeries = comparisonItems.map(item => item.attackerUtility);
+
+    window.NsCharts.createChart('comparisonUtilityChart', 'bar', labels, [
+        { label: 'Defender utility', data: defenderSeries, backgroundColor: '#2d9cdb' },
+        { label: 'Attacker utility', data: attackerSeries, backgroundColor: '#f2994a' }
+    ], {
+        scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'Utility' } },
+            x: { title: { display: true, text: 'Posture mode' } }
+        },
+        plugins: { legend: { position: 'bottom' } }
+    });
+
+    const probabilitySeries = comparisonItems.map(item => item.effectiveAttackSuccessProbability);
+
+    window.NsCharts.createChart('comparisonProbabilityChart', 'bar', labels, [
+        { label: 'Effective attack success probability', data: probabilitySeries, backgroundColor: '#1f5fb8' }
+    ], {
+        scales: {
+            y: { beginAtZero: true, max: 1, title: { display: true, text: 'Probability (0–1)' } },
+            x: { title: { display: true, text: 'Posture mode' } }
+        },
+        plugins: { legend: { display: false } }
+    });
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="fragments :: head('Sender console — Network Security Lab')"></head>
+<body>
+<div class="container">
+    <div th:replace="fragments :: appChrome('Sender console', 'Send NORMAL / SHCS / CPHS messages to a receiver account.', 'send')"></div>
+
+    <div th:replace="fragments :: notice"></div>
+
+    <section class="card">
+        <h2>Send secure message</h2>
+        <p>Select the security algorithm, provide a receiver username (RECEIVER role), and submit your message.</p>
+        <form method="post" th:action="@{/ui/send}">
+            <label for="receiver-username">Receiver username
+                <input id="receiver-username" type="text" name="receiverUsername" minlength="3" maxlength="40" pattern="[A-Za-z0-9._-]+" autocomplete="username" required>
+            </label>
+            <label for="algorithm-type">Security algorithm
+                <select id="algorithm-type" name="algorithmType" required>
+                    <option th:each="algorithm : ${algorithms}" th:value="${algorithm}" th:text="${algorithm}"></option>
+                </select>
+            </label>
+            <label for="message-content">Message content
+                <textarea id="message-content" name="content" rows="6" maxlength="10000" required></textarea>
+            </label>
+            <button type="submit">Send message</button>
+        </form>
+    </section>
+</div>
+</body>
+</html>

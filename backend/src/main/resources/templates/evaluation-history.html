@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="fragments :: head('Evaluation history — Network Security Lab')"></head>
+<body>
+<div class="container">
+    <div th:replace="fragments :: appChrome('Evaluation history', 'Browse persisted evaluation runs and open detail pages.', 'eval-history')"></div>
+
+    <div th:replace="fragments :: notice"></div>
+
+    <section class="card">
+        <h2>Filter Evaluation Runs</h2>
+        <form method="get" th:action="@{/simulation/evaluation-history}" class="inline-form">
+            <label>Algorithm
+                <select name="algorithmType">
+                    <option value="" th:selected="${selectedAlgorithm == null}">ALL</option>
+                    <option th:each="algorithm : ${algorithms}"
+                            th:value="${algorithm}"
+                            th:text="${algorithm}"
+                            th:selected="${selectedAlgorithm == algorithm}">
+                    </option>
+                </select>
+            </label>
+            <label>Comparison Type
+                <select name="comparisonType">
+                    <option value="" th:selected="${selectedComparisonType == null}">ALL</option>
+                    <option th:each="comparisonType : ${comparisonTypes}"
+                            th:value="${comparisonType}"
+                            th:text="${comparisonType}"
+                            th:selected="${selectedComparisonType == comparisonType}">
+                    </option>
+                </select>
+            </label>
+            <button type="submit">Apply Filter</button>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2>Persisted Evaluation Runs</h2>
+        <div class="table-scroll">
+        <table>
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Scenario</th>
+                <th>Type</th>
+                <th>Algorithm</th>
+                <th>Avg Compromise Ratio</th>
+                <th>Avg Resilience Score</th>
+                <th>Avg Attack Eff</th>
+                <th>Avg Defense Eff</th>
+                <th>Runs</th>
+                <th>Created At</th>
+                <th>Details</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:if="${#lists.isEmpty(runs)}">
+                <td colspan="11">No evaluation runs found for this filter.</td>
+            </tr>
+            <tr th:each="run : ${runs}">
+                <td th:text="${run.evaluationRunId}"></td>
+                <td th:text="${run.scenarioName}"></td>
+                <td th:text="${run.comparisonType}"></td>
+                <td th:text="${run.algorithmType}"></td>
+                <td th:text="${run.aggregateMetrics.averageCompromiseRatio}"></td>
+                <td th:text="${run.aggregateMetrics.averageResilienceScore}"></td>
+                <td th:text="${run.aggregateMetrics.averageAttackEfficiency}"></td>
+                <td th:text="${run.aggregateMetrics.averageDefenseEfficiency}"></td>
+                <td th:text="${run.aggregateMetrics.runsExecuted}"></td>
+                <td th:text="${run.createdAt}"></td>
+                <td><a th:href="@{'/simulation/evaluation-history/' + ${run.evaluationRunId}}">View</a></td>
+            </tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+</div>
+</body>
+</html>

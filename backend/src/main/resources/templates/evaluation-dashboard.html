@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="fragments :: head('Evaluation — Network Security Lab')"></head>
+<body>
+<div class="container">
+    <div th:replace="fragments :: appChrome('Evaluation', 'Benchmark harness: repeated runs with explicit seed semantics and aggregated metrics.', 'eval')"></div>
+
+    <div th:replace="fragments :: notice"></div>
+
+    <section class="card">
+        <h2>Run controlled evaluation scenario</h2>
+        <p>
+            Repeated runs use explicit seed semantics:
+            <strong>VARIED</strong> derives a deterministic sequence of seeds from <code>baseSeed</code> (or a stable default if omitted);
+            <strong>FIXED</strong> replays exactly one trajectory and requires <code>repetitions = 1</code> plus a <code>baseSeed</code>.
+            Aggregate uncertainty uses sample standard deviation across repetitions.
+        </p>
+        <form method="post" th:action="@{/simulation/evaluation-dashboard/run}" class="form-grid-2">
+            <label for="eval-scenario-name">Scenario name
+                <input id="eval-scenario-name" type="text" name="scenarioName" minlength="3" maxlength="120" th:value="${evaluationForm.scenarioName}" required>
+            </label>
+            <label for="eval-algorithm">Posture mode
+                <select id="eval-algorithm" name="algorithmType" required>
+                    <option th:each="algorithm : ${algorithms}"
+                            th:value="${algorithm}"
+                            th:text="${algorithm}"
+                            th:selected="${evaluationForm.algorithmType == algorithm}">
+                    </option>
+                </select>
+            </label>
+            <label for="eval-num-nodes">Number of nodes (2–500)
+                <input id="eval-num-nodes" type="number" min="2" max="500" name="numNodes" th:value="${evaluationForm.numNodes}" required>
+            </label>
+            <label for="eval-num-edges">Number of edges
+                <input id="eval-num-edges" type="number" min="0" max="100000" name="numEdges" th:value="${evaluationForm.numEdges}" required>
+            </label>
+            <label for="eval-attack-budget">Attack budget
+                <input id="eval-attack-budget" type="number" min="0" max="10000" name="attackBudget" th:value="${evaluationForm.attackBudget}" required>
+            </label>
+            <label for="eval-defense-budget">Defense budget
+                <input id="eval-defense-budget" type="number" min="0" max="10000" name="defenseBudget" th:value="${evaluationForm.defenseBudget}" required>
+            </label>
+            <label for="eval-recovery-budget">Recovery budget
+                <input id="eval-recovery-budget" type="number" min="0" max="10000" name="recoveryBudget" th:value="${evaluationForm.recoveryBudget}" required>
+            </label>
+            <label for="eval-rounds">Rounds
+                <input id="eval-rounds" type="number" min="1" max="100" name="rounds" th:value="${evaluationForm.rounds}" required>
+            </label>
+            <label for="eval-repetitions">Repetitions
+                <input id="eval-repetitions" type="number" min="1" max="200" name="repetitions" th:value="${evaluationForm.repetitions}" required>
+            </label>
+            <label for="eval-seed-strategy">Seed strategy
+                <select id="eval-seed-strategy" name="seedStrategy" required>
+                    <option th:each="seedMode : ${seedStrategies}"
+                            th:value="${seedMode}"
+                            th:text="${seedMode}"
+                            th:selected="${evaluationForm.seedStrategy == seedMode}">
+                    </option>
+                </select>
+            </label>
+            <label for="eval-base-seed">Base seed (optional)
+                <input id="eval-base-seed" type="number" min="0" name="baseSeed" th:value="${evaluationForm.baseSeed}">
+            </label>
+            <p class="form-hint full-width">
+                UI hint: if you select <strong>FIXED</strong>, set <strong>repetitions = 1</strong> and provide <strong>base seed</strong> (the backend enforces this).
+            </p>
+            <label class="checkbox">
+                <input type="checkbox" name="enableMTD" value="true" th:checked="${evaluationForm.enableMTD}">
+                Enable MTD
+            </label>
+            <label class="checkbox">
+                <input type="checkbox" name="enableDeception" value="true" th:checked="${evaluationForm.enableDeception}">
+                Enable deception
+            </label>
+            <div class="full-width">
+                <button type="submit">Run evaluation</button>
+            </div>
+        </form>
+    </section>
+
+    <section th:if="${evaluationResult}" class="card">
+        <h2>Latest evaluation summary</h2>
+        <div class="table-scroll">
+        <table>
+            <tbody>
+            <tr><th>Evaluation Run ID</th><td th:text="${evaluationResult.evaluationRunId}"></td></tr>
+            <tr><th>Scenario</th><td th:text="${evaluationResult.scenarioName}"></td></tr>
+            <tr><th>Comparison Type</th><td th:text="${evaluationResult.comparisonType}"></td></tr>
+            <tr><th>Algorithm</th><td th:text="${evaluationResult.algorithmType}"></td></tr>
+            <tr><th>Runs Executed</th><td th:text="${evaluationResult.aggregateMetrics.runsExecuted}"></td></tr>
+            <tr><th>Average Final Compromised Nodes</th><td th:text="${evaluationResult.aggregateMetrics.averageFinalCompromisedNodes}"></td></tr>
+            <tr><th>Average Compromise Ratio</th><td th:text="${evaluationResult.aggregateMetrics.averageCompromiseRatio}"></td></tr>
+            <tr><th>Average Resilience Score</th><td th:text="${evaluationResult.aggregateMetrics.averageResilienceScore}"></td></tr>
+            <tr><th>Average Attack Efficiency</th><td th:text="${evaluationResult.aggregateMetrics.averageAttackEfficiency}"></td></tr>
+            <tr><th>Average Defense Efficiency</th><td th:text="${evaluationResult.aggregateMetrics.averageDefenseEfficiency}"></td></tr>
+            <tr><th>Average Deception Effectiveness</th><td th:text="${evaluationResult.aggregateMetrics.averageDeceptionEffectiveness}"></td></tr>
+            <tr><th>Average MTD Effectiveness</th><td th:text="${evaluationResult.aggregateMetrics.averageMtdEffectiveness}"></td></tr>
+            <tr><th>Average mean compromise round index</th><td th:text="${evaluationResult.aggregateMetrics.averageMeanTimeToCompromise}"></td></tr>
+            <tr><th>Average Attack Path Depth</th><td th:text="${evaluationResult.aggregateMetrics.averageAttackPathDepth}"></td></tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+
+    <section th:unless="${evaluationResult}" class="card">
+        <h2>Latest Evaluation Summary</h2>
+        <p>No evaluation run is available yet. Submit the form above to run one.</p>
+    </section>
+
+    <section class="card" th:if="${evaluationResult}">
+        <h2>Evaluation Charts</h2>
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3>Compromise vs Resilience</h3>
+                <canvas id="evalSecurityChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Attack vs Defense Efficiency</h3>
+                <canvas id="evalEfficiencyChart"></canvas>
+            </div>
+            <div class="chart-card full-width">
+                <h3>Defense Feature Impact (Deception/MTD)</h3>
+                <canvas id="evalDefenseFeatureChart"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>Recent evaluation runs</h2>
+        <div class="table-scroll">
+        <table>
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Scenario</th>
+                <th>Type</th>
+                <th>Algorithm</th>
+                <th>Avg Compromise</th>
+                <th>Avg Resilience</th>
+                <th>Runs</th>
+                <th>Created At</th>
+                <th>Details</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:if="${#lists.isEmpty(evaluationHistoryPreview)}">
+                <td colspan="9">No evaluation history found. Run an evaluation to populate benchmark history.</td>
+            </tr>
+            <tr th:each="run : ${evaluationHistoryPreview}">
+                <td th:text="${run.evaluationRunId}"></td>
+                <td th:text="${run.scenarioName}"></td>
+                <td th:text="${run.comparisonType}"></td>
+                <td th:text="${run.algorithmType}"></td>
+                <td th:text="${run.aggregateMetrics.averageCompromiseRatio}"></td>
+                <td th:text="${run.aggregateMetrics.averageResilienceScore}"></td>
+                <td th:text="${run.aggregateMetrics.runsExecuted}"></td>
+                <td th:text="${run.createdAt}"></td>
+                <td><a th:href="@{'/simulation/evaluation-history/' + ${run.evaluationRunId}}">View</a></td>
+            </tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script th:src="@{/js/app-charts.js}"></script>
+<script th:inline="javascript" th:if="${evaluationResult}">
+    const evalResult = /*[[${evaluationResult}]]*/ null;
+    const m = evalResult && evalResult.aggregateMetrics ? evalResult.aggregateMetrics : null;
+    if (!m) {
+        // nothing to chart
+    } else {
+        window.NsCharts.createChart('evalSecurityChart', 'bar',
+            ['Avg compromise ratio', 'Avg resilience score'],
+            [{
+                label: 'Security posture (aggregated)',
+                data: [m.averageCompromiseRatio, m.averageResilienceScore],
+                backgroundColor: ['#eb5757', '#27ae60']
+            }],
+            {
+                scales: {
+                    y: { beginAtZero: true, max: 1, title: { display: true, text: 'Score (0–1)' } },
+                    x: { title: { display: true, text: 'Metric' } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        );
+
+        window.NsCharts.createChart('evalEfficiencyChart', 'bar',
+            ['Avg attack efficiency', 'Avg defense efficiency'],
+            [{
+                label: 'Efficiency (aggregated)',
+                data: [m.averageAttackEfficiency, m.averageDefenseEfficiency],
+                backgroundColor: ['#f2994a', '#2d9cdb']
+            }],
+            {
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Efficiency' } },
+                    x: { title: { display: true, text: 'Metric' } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        );
+
+        window.NsCharts.createChart('evalDefenseFeatureChart', 'bar',
+            ['Deception effectiveness', 'MTD effectiveness'],
+            [{
+                label: 'Defense features (aggregated)',
+                data: [m.averageDeceptionEffectiveness, m.averageMtdEffectiveness],
+                backgroundColor: ['#1f5fb8', '#56ccf2']
+            }],
+            {
+                scales: {
+                    y: { beginAtZero: true, max: 1, title: { display: true, text: 'Effectiveness (0–1)' } },
+                    x: { title: { display: true, text: 'Control' } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        );
+    }
+</script>
+</body>
+</html>

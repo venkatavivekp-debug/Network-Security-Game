@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="fragments :: head('Evaluation detail — Network Security Lab')"></head>
+<body>
+<div class="container">
+    <div th:replace="fragments :: appChrome('Evaluation detail', 'Persisted run parameters plus aggregated metrics snapshot.', 'eval-history')"></div>
+
+    <div th:replace="fragments :: notice"></div>
+
+    <section class="card">
+        <h2 th:text="${'Evaluation #' + run.evaluationRunId}"></h2>
+        <div class="table-scroll">
+        <table>
+            <tbody>
+            <tr><th>Scenario</th><td th:text="${run.scenarioName}"></td></tr>
+            <tr><th>Comparison Type</th><td th:text="${run.comparisonType}"></td></tr>
+            <tr><th>Algorithm</th><td th:text="${run.algorithmType}"></td></tr>
+            <tr><th>Nodes / Edges</th><td th:text="${run.numNodes + ' / ' + run.numEdges}"></td></tr>
+            <tr><th>Budgets (A/D/R)</th><td th:text="${run.attackBudget + ' / ' + run.defenseBudget + ' / ' + run.recoveryBudget}"></td></tr>
+            <tr><th>Rounds</th><td th:text="${run.rounds}"></td></tr>
+            <tr><th>Repetitions</th><td th:text="${run.repetitions}"></td></tr>
+            <tr><th>Seed Strategy</th><td th:text="${run.seedStrategy}"></td></tr>
+            <tr><th>Base Seed</th><td th:text="${run.baseSeed}"></td></tr>
+            <tr><th>Used Seeds</th><td th:text="${run.usedSeeds}"></td></tr>
+            <tr><th>Created At</th><td th:text="${run.createdAt}"></td></tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>Aggregate metrics</h2>
+        <div class="table-scroll">
+        <table>
+            <tbody>
+            <tr><th>Average Final Compromised Nodes</th><td th:text="${run.aggregateMetrics.averageFinalCompromisedNodes}"></td></tr>
+            <tr><th>Average Compromise Ratio</th><td th:text="${run.aggregateMetrics.averageCompromiseRatio}"></td></tr>
+            <tr><th>Average Resilience Score</th><td th:text="${run.aggregateMetrics.averageResilienceScore}"></td></tr>
+            <tr><th>Average Attack Efficiency</th><td th:text="${run.aggregateMetrics.averageAttackEfficiency}"></td></tr>
+            <tr><th>Average Defense Efficiency</th><td th:text="${run.aggregateMetrics.averageDefenseEfficiency}"></td></tr>
+            <tr><th>Average Deception Effectiveness</th><td th:text="${run.aggregateMetrics.averageDeceptionEffectiveness}"></td></tr>
+            <tr><th>Average MTD Effectiveness</th><td th:text="${run.aggregateMetrics.averageMtdEffectiveness}"></td></tr>
+            <tr><th>Average Mean Time To Compromise</th><td th:text="${run.aggregateMetrics.averageMeanTimeToCompromise}"></td></tr>
+            <tr><th>Average Attack Path Depth</th><td th:text="${run.aggregateMetrics.averageAttackPathDepth}"></td></tr>
+            <tr><th>StdDev Compromise Ratio</th><td th:text="${run.aggregateMetrics.stdDevCompromiseRatio}"></td></tr>
+            <tr><th>StdDev Resilience Score</th><td th:text="${run.aggregateMetrics.stdDevResilienceScore}"></td></tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>Metric Snapshot</h2>
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3>Compromise and Resilience</h3>
+                <canvas id="detailSecurityChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Efficiency</h3>
+                <canvas id="detailEfficiencyChart"></canvas>
+            </div>
+        </div>
+    </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script th:src="@{/js/app-charts.js}"></script>
+<script th:inline="javascript">
+    const run = /*[[${run}]]*/ null;
+    const m = run && run.aggregateMetrics ? run.aggregateMetrics : null;
+
+    if (m) {
+        window.NsCharts.createChart('detailSecurityChart', 'bar',
+            ['Avg compromise ratio', 'Avg resilience score'],
+            [{
+                label: 'Security metrics',
+                data: [m.averageCompromiseRatio, m.averageResilienceScore],
+                backgroundColor: ['#eb5757', '#27ae60']
+            }],
+            {
+                scales: {
+                    y: { beginAtZero: true, max: 1, title: { display: true, text: 'Score (0–1)' } },
+                    x: { title: { display: true, text: 'Metric' } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        );
+
+        window.NsCharts.createChart('detailEfficiencyChart', 'bar',
+            ['Avg attack efficiency', 'Avg defense efficiency'],
+            [{
+                label: 'Efficiency metrics',
+                data: [m.averageAttackEfficiency, m.averageDefenseEfficiency],
+                backgroundColor: ['#f2994a', '#2d9cdb']
+            }],
+            {
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Efficiency' } },
+                    x: { title: { display: true, text: 'Metric' } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        );
+    }
+</script>
+</body>
+</html>
