@@ -1,0 +1,287 @@
+{
+  "info": {
+    "name": "Network Security Game API",
+    "description": "Postman collection for Phase 1-4 API workflows: auth, messaging, attack simulation, game simulation, history, compare, export.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "senderUsername", "value": "demo_sender" },
+    { "key": "senderPassword", "value": "DemoSender#123" },
+    { "key": "receiverUsername", "value": "demo_receiver" },
+    { "key": "receiverPassword", "value": "DemoReceiver#123" },
+    { "key": "messageId", "value": "1" },
+    { "key": "simulationRunId", "value": "1" }
+  ],
+  "item": [
+    {
+      "name": "Auth - Register Sender",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{senderUsername}}\",\n  \"password\": \"{{senderPassword}}\",\n  \"role\": \"SENDER\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "register"]
+        }
+      }
+    },
+    {
+      "name": "Auth - Register Receiver",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{receiverUsername}}\",\n  \"password\": \"{{receiverPassword}}\",\n  \"role\": \"RECEIVER\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "register"]
+        }
+      }
+    },
+    {
+      "name": "Auth - Login Sender",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{senderUsername}}\",\n  \"password\": \"{{senderPassword}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "Message - Send NORMAL",
+      "request": {
+        "method": "POST",
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{senderUsername}}", "type": "string" },
+            { "key": "password", "value": "{{senderPassword}}", "type": "string" }
+          ]
+        },
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"receiverUsername\": \"{{receiverUsername}}\",\n  \"content\": \"NORMAL secure message\",\n  \"algorithmType\": \"NORMAL\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/message/send",
+          "host": ["{{baseUrl}}"],
+          "path": ["message", "send"]
+        }
+      }
+    },
+    {
+      "name": "Message - Send SHCS",
+      "request": {
+        "method": "POST",
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{senderUsername}}", "type": "string" },
+            { "key": "password", "value": "{{senderPassword}}", "type": "string" }
+          ]
+        },
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"receiverUsername\": \"{{receiverUsername}}\",\n  \"content\": \"SHCS secure message\",\n  \"algorithmType\": \"SHCS\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/message/send",
+          "host": ["{{baseUrl}}"],
+          "path": ["message", "send"]
+        }
+      }
+    },
+    {
+      "name": "Message - Send CPHS",
+      "request": {
+        "method": "POST",
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{senderUsername}}", "type": "string" },
+            { "key": "password", "value": "{{senderPassword}}", "type": "string" }
+          ]
+        },
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"receiverUsername\": \"{{receiverUsername}}\",\n  \"content\": \"CPHS secure message\",\n  \"algorithmType\": \"CPHS\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/message/send",
+          "host": ["{{baseUrl}}"],
+          "path": ["message", "send"]
+        }
+      }
+    },
+    {
+      "name": "Message - Decrypt",
+      "request": {
+        "method": "POST",
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{receiverUsername}}", "type": "string" },
+            { "key": "password", "value": "{{receiverPassword}}", "type": "string" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/message/decrypt/{{messageId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["message", "decrypt", "{{messageId}}"]
+        }
+      }
+    },
+    {
+      "name": "Attack - Simulate",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{senderUsername}}", "type": "string" },
+            { "key": "password", "value": "{{senderPassword}}", "type": "string" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/attack/simulate/{{messageId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["attack", "simulate", "{{messageId}}"]
+        }
+      }
+    },
+    {
+      "name": "Simulation - Run",
+      "request": {
+        "method": "POST",
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{senderUsername}}", "type": "string" },
+            { "key": "password", "value": "{{senderPassword}}", "type": "string" }
+          ]
+        },
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"numNodes\": 10,\n  \"numEdges\": 15,\n  \"attackBudget\": 3,\n  \"defenseBudget\": 3,\n  \"recoveryBudget\": 2,\n  \"algorithmType\": \"CPHS\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/simulation/run",
+          "host": ["{{baseUrl}}"],
+          "path": ["simulation", "run"]
+        }
+      }
+    },
+    {
+      "name": "Simulation - History",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{senderUsername}}", "type": "string" },
+            { "key": "password", "value": "{{senderPassword}}", "type": "string" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/simulation/history",
+          "host": ["{{baseUrl}}"],
+          "path": ["simulation", "history"]
+        }
+      }
+    },
+    {
+      "name": "Simulation - History by ID",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{senderUsername}}", "type": "string" },
+            { "key": "password", "value": "{{senderPassword}}", "type": "string" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/simulation/history/{{simulationRunId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["simulation", "history", "{{simulationRunId}}"]
+        }
+      }
+    },
+    {
+      "name": "Simulation - Compare",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{senderUsername}}", "type": "string" },
+            { "key": "password", "value": "{{senderPassword}}", "type": "string" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/simulation/compare?numNodes=10&numEdges=15&attackBudget=3&defenseBudget=3&recoveryBudget=2",
+          "host": ["{{baseUrl}}"],
+          "path": ["simulation", "compare"],
+          "query": [
+            { "key": "numNodes", "value": "10" },
+            { "key": "numEdges", "value": "15" },
+            { "key": "attackBudget", "value": "3" },
+            { "key": "defenseBudget", "value": "3" },
+            { "key": "recoveryBudget", "value": "2" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Simulation - Export CSV",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{senderUsername}}", "type": "string" },
+            { "key": "password", "value": "{{senderPassword}}", "type": "string" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/simulation/export",
+          "host": ["{{baseUrl}}"],
+          "path": ["simulation", "export"]
+        }
+      }
+    }
+  ]
+}
