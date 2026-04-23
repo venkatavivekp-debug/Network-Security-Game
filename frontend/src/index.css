@@ -1,0 +1,14 @@
+/* Minimal base styles; the UI theme lives in `styles/commandCenter.css`. */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
