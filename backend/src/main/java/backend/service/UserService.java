@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import java.time.LocalDateTime;
+
 @Service
 public class UserService {
 
@@ -66,5 +68,34 @@ public class UserService {
                     .collect(Collectors.joining("; "));
             throw new BadRequestException(message);
         }
+    }
+
+    @Transactional
+    public void recordLoginSuccess(User user, String fingerprintHash) {
+        user.setFailedLoginAttempts(0);
+        user.setLastLoginAt(LocalDateTime.now());
+        user.setLastLoginFingerprintHash(fingerprintHash);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void recordLoginFailure(User user) {
+        user.setFailedLoginAttempts(user.getFailedLoginAttempts() + 1);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void lockAccount(User user, LocalDateTime until) {
+        user.setAccountLocked(true);
+        user.setLockedUntil(until);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void unlockAccount(User user) {
+        user.setAccountLocked(false);
+        user.setLockedUntil(null);
+        user.setFailedLoginAttempts(0);
+        userRepository.save(user);
     }
 }

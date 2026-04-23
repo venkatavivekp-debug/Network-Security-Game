@@ -2,5 +2,6 @@ package backend.model;
 
 public enum Role {
     SENDER,
-    RECEIVER
+    RECEIVER,
+    ADMIN
 }

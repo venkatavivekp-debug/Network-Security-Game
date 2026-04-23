@@ -38,7 +38,15 @@ public class CPHSService {
     }
 
     public EncryptionPackage encryptWithPuzzle(String plainText) {
-        byte[] randomMessageKey = encryptionUtil.randomBytes(cphsProperties.getRandomKeyBytes());
+        return encryptWithPuzzle(plainText, cphsProperties.getRandomKeyBytes(), null);
+    }
+
+    public EncryptionPackage encryptWithPuzzle(String plainText, Integer overrideMaxIterations) {
+        return encryptWithPuzzle(plainText, cphsProperties.getRandomKeyBytes(), overrideMaxIterations);
+    }
+
+    private EncryptionPackage encryptWithPuzzle(String plainText, int randomKeyBytes, Integer overrideMaxIterations) {
+        byte[] randomMessageKey = encryptionUtil.randomBytes(randomKeyBytes);
 
         String encryptedContent = encryptionUtil.encrypt(
                 plainText,
@@ -48,7 +56,9 @@ public class CPHSService {
                 cryptoProperties.getGcmTagLengthBits()
         );
 
-        PuzzleService.PuzzlePackagingResult packagingResult = puzzleService.createPuzzlePackage(randomMessageKey);
+        PuzzleService.PuzzlePackagingResult packagingResult = overrideMaxIterations == null
+                ? puzzleService.createPuzzlePackage(randomMessageKey)
+                : puzzleService.createPuzzlePackage(randomMessageKey, overrideMaxIterations);
         PuzzleDescriptor descriptor = packagingResult.getDescriptor();
 
         Map<String, Object> metadata = new HashMap<>();
@@ -84,6 +94,32 @@ public class CPHSService {
         );
 
         return new CPHSDecryptionResult(plainText, solveResult.getSolveTimeMs());
+    }
+
+    public CPHSDecryptionResult decryptAfterPuzzleNonce(String encryptedContent, String metadataJson, int nonce) {
+        Map<String, Object> metadata = fromJson(metadataJson);
+
+        String challenge = requiredString(metadata, "challenge");
+        String targetHash = requiredString(metadata, "targetHash");
+        int maxIterations = requiredInteger(metadata, "maxIterations");
+        String wrappedKey = requiredString(metadata, "wrappedKey");
+
+        if (nonce < 0 || nonce >= maxIterations) {
+            throw new BadRequestException("nonce must be within puzzle iteration bounds");
+        }
+
+        long start = System.currentTimeMillis();
+        byte[] recoveredKey = puzzleService.recoverKeyFromNonce(challenge, targetHash, nonce, wrappedKey);
+
+        String plainText = encryptionUtil.decrypt(
+                encryptedContent,
+                recoveredKey,
+                cryptoProperties.getAesTransformation(),
+                cryptoProperties.getGcmTagLengthBits()
+        );
+
+        long totalTime = System.currentTimeMillis() - start;
+        return new CPHSDecryptionResult(plainText, totalTime);
     }
 
     private Map<String, Object> fromJson(String json) {

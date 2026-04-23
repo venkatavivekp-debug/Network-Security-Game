@@ -40,6 +40,8 @@ public class SecurityConfig {
                         .requestMatchers("/", "/login", "/register", "/ui/login", "/ui/register", "/auth/register", "/auth/login", "/css/**").permitAll()
                         .requestMatchers("/send", "/ui/send", "/message/send").hasRole("SENDER")
                         .requestMatchers("/receive", "/ui/decrypt/**", "/message/received", "/message/decrypt/**").hasRole("RECEIVER")
+                        .requestMatchers("/puzzle/**").hasRole("RECEIVER")
+                        .requestMatchers("/admin/**").hasRole("ADMIN")
                         .requestMatchers("/attack/**").hasAnyRole("SENDER", "RECEIVER")
                         .requestMatchers("/simulation/**").hasAnyRole("SENDER", "RECEIVER")
                         .requestMatchers("/evaluation/**").hasAnyRole("SENDER", "RECEIVER", "ADMIN")

@@ -11,6 +11,11 @@ public class MessageSummaryResponse {
     private String receiverUsername;
     private String encryptedContent;
     private AlgorithmType algorithmType;
+    private AlgorithmType requestedAlgorithmType;
+    private String status;
+    private Double riskScore;
+    private String riskLevel;
+    private String warning;
     private String metadata;
     private LocalDateTime createdAt;
 
@@ -52,6 +57,46 @@ public class MessageSummaryResponse {
 
     public void setAlgorithmType(AlgorithmType algorithmType) {
         this.algorithmType = algorithmType;
+    }
+
+    public AlgorithmType getRequestedAlgorithmType() {
+        return requestedAlgorithmType;
+    }
+
+    public void setRequestedAlgorithmType(AlgorithmType requestedAlgorithmType) {
+        this.requestedAlgorithmType = requestedAlgorithmType;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public Double getRiskScore() {
+        return riskScore;
+    }
+
+    public void setRiskScore(Double riskScore) {
+        this.riskScore = riskScore;
+    }
+
+    public String getRiskLevel() {
+        return riskLevel;
+    }
+
+    public void setRiskLevel(String riskLevel) {
+        this.riskLevel = riskLevel;
+    }
+
+    public String getWarning() {
+        return warning;
+    }
+
+    public void setWarning(String warning) {
+        this.warning = warning;
     }
 
     public String getMetadata() {

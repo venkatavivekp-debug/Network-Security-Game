@@ -9,6 +9,9 @@ public class PuzzleProperties {
     private int challengeBytes;
     private int simulatedDelayMs;
     private String keyDerivationSalt;
+    private int attemptsAllowed = 3;
+    private int timeLimitSeconds = 300;
+    private int minAdaptiveIterations = 15000;
 
     public int getMaxIterations() {
         return maxIterations;
@@ -40,5 +43,29 @@ public class PuzzleProperties {
 
     public void setKeyDerivationSalt(String keyDerivationSalt) {
         this.keyDerivationSalt = keyDerivationSalt;
+    }
+
+    public int getAttemptsAllowed() {
+        return attemptsAllowed;
+    }
+
+    public void setAttemptsAllowed(int attemptsAllowed) {
+        this.attemptsAllowed = attemptsAllowed;
+    }
+
+    public int getTimeLimitSeconds() {
+        return timeLimitSeconds;
+    }
+
+    public void setTimeLimitSeconds(int timeLimitSeconds) {
+        this.timeLimitSeconds = timeLimitSeconds;
+    }
+
+    public int getMinAdaptiveIterations() {
+        return minAdaptiveIterations;
+    }
+
+    public void setMinAdaptiveIterations(int minAdaptiveIterations) {
+        this.minAdaptiveIterations = minAdaptiveIterations;
     }
 }

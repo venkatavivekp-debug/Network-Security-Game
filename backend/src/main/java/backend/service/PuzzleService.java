@@ -25,17 +25,39 @@ public class PuzzleService {
     }
 
     public PuzzlePackagingResult createPuzzlePackage(byte[] messageKey) {
+        return createPuzzlePackage(messageKey, puzzleProperties.getMaxIterations());
+    }
+
+    public PuzzlePackagingResult createPuzzlePackage(byte[] messageKey, int maxIterations) {
         String challenge = Base64.getEncoder().encodeToString(encryptionUtil.randomBytes(puzzleProperties.getChallengeBytes()));
-        int nonce = secureRandom.nextInt(Math.max(1, puzzleProperties.getMaxIterations()));
-        String targetHash = hashUtil.sha256Hex(challenge + ":" + nonce);
+        int boundedMaxIterations = Math.max(1, Math.min(maxIterations, puzzleProperties.getMaxIterations()));
+        int nonceUpperBound = Math.max(1, boundedMaxIterations);
+        int nonce = secureRandom.nextInt(nonceUpperBound);
+        String prefix = challenge + ":";
+        String targetHash = hashUtil.sha256Hex(prefix + nonce);
 
         byte[] derivedKey = derivePuzzleKey(challenge, nonce);
         byte[] wrappedKey = xor(messageKey, derivedKey);
 
-        PuzzleDescriptor descriptor = new PuzzleDescriptor(challenge, targetHash, puzzleProperties.getMaxIterations());
+        PuzzleDescriptor descriptor = new PuzzleDescriptor(challenge, targetHash, boundedMaxIterations);
         String wrappedKeyBase64 = Base64.getEncoder().encodeToString(wrappedKey);
 
         return new PuzzlePackagingResult(descriptor, wrappedKeyBase64);
+    }
+
+    public byte[] recoverKeyFromNonce(String challenge, String targetHash, int nonce, String wrappedKeyBase64) {
+        if (nonce < 0) {
+            throw new BadRequestException("nonce must be non-negative");
+        }
+        String prefix = challenge + ":";
+        String candidate = hashUtil.sha256Hex(prefix + nonce);
+        if (!candidate.equals(targetHash)) {
+            throw new BadRequestException("Incorrect puzzle answer");
+        }
+
+        byte[] derivedKey = derivePuzzleKey(challenge, nonce);
+        byte[] wrappedKey = Base64.getDecoder().decode(wrappedKeyBase64);
+        return xor(wrappedKey, derivedKey);
     }
 
     public PuzzleSolveResult solveAndRecoverKey(String challenge, String targetHash, int maxIterations, String wrappedKeyBase64) {

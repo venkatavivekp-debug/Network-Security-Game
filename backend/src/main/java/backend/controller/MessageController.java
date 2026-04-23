@@ -41,7 +41,7 @@ public class MessageController {
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
-        MessageSendResponse response = messageService.sendMessage(authentication.getName(), request);
+        MessageSendResponse response = messageService.sendMessage(authentication.getName(), request, httpRequest);
         return ResponseEntity.ok(ApiResponseUtil.success("Message sent successfully", httpRequest.getRequestURI(), response));
     }
 
@@ -61,5 +61,26 @@ public class MessageController {
     ) {
         MessageDecryptResponse response = messageService.decryptMessage(messageId, authentication.getName());
         return ResponseEntity.ok(ApiResponseUtil.success("Message decrypted successfully", httpRequest.getRequestURI(), response));
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SENDER','RECEIVER')")
+    public ResponseEntity<ApiSuccessResponse<MessageSummaryResponse>> getById(
+            @PathVariable("id") @Positive(message = "id must be positive") Long messageId,
+            Authentication authentication,
+            HttpServletRequest httpRequest
+    ) {
+        // For now return the same shape as the inbox summary (encrypted payload + metadata).
+        // This keeps entities hidden and avoids leaking plaintext.
+        var msg = messageService.getByIdForUser(messageId, authentication.getName());
+        MessageSummaryResponse response = new MessageSummaryResponse();
+        response.setId(msg.getId());
+        response.setSenderUsername(msg.getSender().getUsername());
+        response.setReceiverUsername(msg.getReceiver().getUsername());
+        response.setEncryptedContent(msg.getEncryptedContent());
+        response.setAlgorithmType(msg.getAlgorithmType());
+        response.setMetadata(msg.getMetadata());
+        response.setCreatedAt(msg.getCreatedAt());
+        return ResponseEntity.ok(ApiResponseUtil.success("Message fetched", httpRequest.getRequestURI(), response));
     }
 }

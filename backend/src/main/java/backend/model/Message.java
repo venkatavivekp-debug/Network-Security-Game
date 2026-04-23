@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.OneToOne;
 
 import java.time.LocalDateTime;
 
@@ -33,15 +34,38 @@ public class Message {
     @Column(name = "encrypted_content", nullable = false, columnDefinition = "LONGTEXT")
     private String encryptedContent;
 
+    @Column(name = "original_hash", length = 64)
+    private String originalHash;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "algorithm_type", nullable = false, length = 20)
     private AlgorithmType algorithmType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "requested_algorithm_type", length = 20)
+    private AlgorithmType requestedAlgorithmType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    private MessageStatus status = MessageStatus.LOCKED;
+
+    @Column(name = "risk_score_at_send")
+    private Double riskScoreAtSend;
+
+    @Column(name = "risk_level_at_send", length = 20)
+    private String riskLevelAtSend;
+
+    @Column(name = "hold_reason", length = 200)
+    private String holdReason;
 
     @Column(name = "metadata", columnDefinition = "LONGTEXT")
     private String metadata;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+
+    @OneToOne(mappedBy = "message", fetch = FetchType.LAZY)
+    private Puzzle puzzle;
 
     public Message() {
     }
@@ -78,12 +102,60 @@ public class Message {
         this.encryptedContent = encryptedContent;
     }
 
+    public String getOriginalHash() {
+        return originalHash;
+    }
+
+    public void setOriginalHash(String originalHash) {
+        this.originalHash = originalHash;
+    }
+
     public AlgorithmType getAlgorithmType() {
         return algorithmType;
     }
 
     public void setAlgorithmType(AlgorithmType algorithmType) {
         this.algorithmType = algorithmType;
+    }
+
+    public AlgorithmType getRequestedAlgorithmType() {
+        return requestedAlgorithmType;
+    }
+
+    public void setRequestedAlgorithmType(AlgorithmType requestedAlgorithmType) {
+        this.requestedAlgorithmType = requestedAlgorithmType;
+    }
+
+    public MessageStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(MessageStatus status) {
+        this.status = status;
+    }
+
+    public Double getRiskScoreAtSend() {
+        return riskScoreAtSend;
+    }
+
+    public void setRiskScoreAtSend(Double riskScoreAtSend) {
+        this.riskScoreAtSend = riskScoreAtSend;
+    }
+
+    public String getRiskLevelAtSend() {
+        return riskLevelAtSend;
+    }
+
+    public void setRiskLevelAtSend(String riskLevelAtSend) {
+        this.riskLevelAtSend = riskLevelAtSend;
+    }
+
+    public String getHoldReason() {
+        return holdReason;
+    }
+
+    public void setHoldReason(String holdReason) {
+        this.holdReason = holdReason;
     }
 
     public String getMetadata() {
@@ -100,5 +172,13 @@ public class Message {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public Puzzle getPuzzle() {
+        return puzzle;
+    }
+
+    public void setPuzzle(Puzzle puzzle) {
+        this.puzzle = puzzle;
     }
 }
