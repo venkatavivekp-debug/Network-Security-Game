@@ -3,6 +3,7 @@ package backend.service;
 import backend.adaptive.AdaptiveModePolicyService;
 import backend.adaptive.AdaptiveDecision;
 import backend.exception.BadRequestException;
+import backend.dto.EvaluationModeComparisonSummary;
 import backend.model.AlgorithmType;
 import backend.model.EvaluationMetrics;
 import backend.model.EvaluationResult;
@@ -17,10 +18,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.EnumMap;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.stream.Collectors;
 
 @Service
 public class EvaluationExperimentService {
@@ -36,6 +40,79 @@ public class EvaluationExperimentService {
         REDUNDANCY,
         DYNAMIC_REROUTING,
         PUZZLE_ESCALATION
+    }
+
+    /**
+     * Research-style category labels aligned to experiment modes (implementation unchanged; labels only).
+     */
+    public static String researchCategoryForMode(ExperimentMode mode) {
+        return switch (mode) {
+            case NORMAL -> "Static Security";
+            case SHCS -> "Layered Security";
+            case CPHS -> "Challenge-Based Security";
+            case ADAPTIVE -> "Adaptive Security";
+        };
+    }
+
+    public static Map<String, String> baselineModeLabels() {
+        Map<String, String> labels = new LinkedHashMap<>();
+        for (ExperimentMode mode : ExperimentMode.values()) {
+            labels.put(mode.name(), researchCategoryForMode(mode));
+        }
+        return labels;
+    }
+
+    /**
+     * Ranks modes using only aggregated metrics: lowest compromise, then highest resilience, then lowest user effort.
+     */
+    public String bestModeName(Map<String, EvaluationMetrics> metricsByMode) {
+        return metricsByMode.entrySet().stream()
+                .min(Comparator
+                        .comparingDouble((Map.Entry<String, EvaluationMetrics> e) -> e.getValue().getCompromiseRatio())
+                        .thenComparingDouble(e -> -e.getValue().getResilienceScore())
+                        .thenComparingDouble(e -> e.getValue().getUserEffortScore()))
+                .map(Map.Entry::getKey)
+                .orElse(ExperimentMode.NORMAL.name());
+    }
+
+    public EvaluationModeComparisonSummary buildComparisonSummary(
+            double attackIntensity01,
+            Map<String, EvaluationMetrics> metricsByMode
+    ) {
+        EvaluationModeComparisonSummary summary = new EvaluationModeComparisonSummary();
+        summary.setAttackIntensity(round3(clamp01(attackIntensity01)));
+        summary.setBaselineModeLabels(baselineModeLabels());
+        String best = bestModeName(metricsByMode);
+        summary.setBestModeUnderAttackIntensity(best);
+        summary.setSecurityVsEffortTradeOff(buildSecurityVsEffortSummary(metricsByMode, best, summary.getAttackIntensity()));
+        return summary;
+    }
+
+    private String buildSecurityVsEffortSummary(
+            Map<String, EvaluationMetrics> metricsByMode,
+            String bestMode,
+            double attackIntensityRounded
+    ) {
+        List<Map.Entry<String, EvaluationMetrics>> ordered = new ArrayList<>(metricsByMode.entrySet());
+        ordered.sort(Comparator.comparingDouble(e -> e.getValue().getCompromiseRatio()));
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("At attackIntensity=").append(attackIntensityRounded);
+        sb.append(", the lowest measured compromiseRatio is ");
+        sb.append(round3(metricsByMode.get(bestMode).getCompromiseRatio()));
+        sb.append(" (mode ").append(bestMode).append("). ");
+        sb.append("Ordering by compromiseRatio (low to high): ");
+        sb.append(ordered.stream()
+                .map(e -> e.getKey() + "=" + round3(e.getValue().getCompromiseRatio()))
+                .collect(Collectors.joining(", ")));
+        sb.append(". ");
+        sb.append("Matching userEffortScore values: ");
+        sb.append(metricsByMode.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(e -> e.getKey() + "=" + round3(e.getValue().getUserEffortScore()))
+                .collect(Collectors.joining(", ")));
+        sb.append(".");
+        return sb.toString();
     }
 
     private final GameSimulationService gameSimulationService;
