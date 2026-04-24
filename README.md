@@ -179,6 +179,41 @@ Response shape:
 ### Reproducibility
 - If `seed` is provided, the service derives per-run seeds deterministically with `SeedUtil.mix64(...)`.
 - If omitted, the service derives a stable seed from scenario parameters.
+
+### Endpoint: `GET /evaluation/analysis`
+Same query parameters as `/evaluation/compare`. Runs the same harness, then adds a short interpretation layer that only states what the aggregated metrics actually show (ordering, which mode wins on the ranking we use, and the fixed research-style labels below). It also runs three extra comparisons at intensities `0.2`, `0.5`, and `0.85` to fill `recommendedModeByThreatLevel` (`LOW` / `MEDIUM` / `HIGH`). Those recommendations are heuristics from this simulator, not external benchmarks.
+
+Response `data` object:
+- `metrics` — same map as `/evaluation/compare`
+- `insights` — bullet-style strings derived from those numbers
+- `bestMode` — mode name that ranks first on compromise (then resilience, then effort)
+- `recommendedModeByThreatLevel` — best mode name per band from the extra runs
+
+## Research Alignment and Experimental Findings
+
+This section is about how we *talk about* the system next to common paper-style baselines, not about claiming new theorems or real-world deployment numbers.
+
+### Evaluation modes vs baseline categories
+We did not swap out the crypto or game engine. We only label what already runs:
+- **NORMAL** → *Static Security* (single-mode operation, no layered or challenge gate in the experiment harness sense)
+- **SHCS** → *Layered Security* (stronger packaging / layered posture in the model)
+- **CPHS** → *Challenge-Based Security* (puzzle-style gating reflected in effort and posture)
+- **ADAPTIVE** → *Adaptive Security* (policy-driven mode selection and possible hold)
+
+So when you read a chart or API output, “Static vs Layered vs Challenge vs Adaptive” is the same run you were already doing, just named in a way reviewers recognize.
+
+### How this compares to “traditional” setups
+Traditional here means fixed-mode systems you hold constant while stress increases. Our harness does exactly that for NORMAL/SHCS/CPHS, then adds ADAPTIVE as a separate curve. The improvement story is never assumed: you have to look at `compromiseRatio`, `resilienceScore`, and `userEffortScore` for the seed and intensity you chose. The `/evaluation/analysis` endpoint exists so those comparisons are spelled out in text tied to the numbers, instead of hand-waving in a write-up.
+
+### What adaptive security is supposed to improve (in this codebase)
+The point of ADAPTIVE in the experiment service is to let risk signals change effective mode and difficulty before the simulation step, so you can see whether that policy buys lower damage or faster recovery *in this model* compared to leaving a single mode on. If the metrics do not move, the honest conclusion is that this scenario did not benefit—not that the code “failed silently.”
+
+### Limitations I would put in a report
+- Everything is a **controlled simulator**: graph attacks, budgets, and “effort” are proxies. Good for relative comparisons inside the project, weak for absolute security claims.
+- Labels like “Static Security” are **mapping conventions** for exposition; they are not citations of a specific third-party product or standard.
+- `/evaluation/analysis` can sound authoritative because it uses full sentences, but it is still **post-processing the same random runs**—garbage seed or too few runs still gives noisy text.
+- The LOW/MEDIUM/HIGH recommendations use three fixed intensities; a different grid could change which mode “wins” each band.
+
 ## Advanced Cyber Defense Engine
 The advanced layer extends the base simulation with an adaptive cyber-defense engine built on attack-graph progression, stochastic compromise, and repeated attacker-defender rounds.
 
