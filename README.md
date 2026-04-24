@@ -208,11 +208,43 @@ Traditional here means fixed-mode systems you hold constant while stress increas
 ### What adaptive security is supposed to improve (in this codebase)
 The point of ADAPTIVE in the experiment service is to let risk signals change effective mode and difficulty before the simulation step, so you can see whether that policy buys lower damage or faster recovery *in this model* compared to leaving a single mode on. If the metrics do not move, the honest conclusion is that this scenario did not benefit—not that the code “failed silently.”
 
+### Reproducible result run
+These numbers were generated from the existing `/evaluation/compare` and `/evaluation/analysis` paths with:
+- `attackIntensity`: `0.2`, `0.5`, `0.85`
+- `numberOfRuns`: `30`
+- `seed`: `20260424`
+- `defenseStrategy`: `REDUNDANCY`
+- topology defaults: `numNodes=20`, `numEdges=35`
+- `persist=false`
+
+| attackIntensity | mode | attackSuccessRate | compromiseRatio | averageRecoveryTime | resilienceScore | userEffortScore | falsePositiveRate |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| 0.20 | NORMAL | 0.720 | 0.114 | 11.838 | 0.728 | 0.000 | 0.000 |
+| 0.20 | SHCS | 0.504 | 0.087 | 10.024 | 0.792 | 0.150 | 0.000 |
+| 0.20 | CPHS | 0.396 | 0.029 | 7.230 | 0.908 | 14.334 | 0.000 |
+| 0.20 | ADAPTIVE | 0.720 | 0.111 | 11.769 | 0.736 | 0.000 | 0.000 |
+| 0.50 | NORMAL | 0.720 | 0.162 | 16.198 | 0.639 | 0.000 | 0.000 |
+| 0.50 | SHCS | 0.504 | 0.150 | 15.141 | 0.660 | 0.150 | 0.000 |
+| 0.50 | CPHS | 0.396 | 0.043 | 10.587 | 0.842 | 14.334 | 0.000 |
+| 0.50 | ADAPTIVE | 0.720 | 0.177 | 16.527 | 0.631 | 0.000 | 0.000 |
+| 0.85 | NORMAL | 0.720 | 0.215 | 20.372 | 0.582 | 0.000 | 0.000 |
+| 0.85 | SHCS | 0.504 | 0.173 | 18.163 | 0.636 | 0.150 | 0.000 |
+| 0.85 | CPHS | 0.396 | 0.065 | 14.358 | 0.782 | 14.334 | 0.000 |
+| 0.85 | ADAPTIVE | 0.720 | 0.240 | 21.451 | 0.540 | 0.000 | 0.000 |
+
+The `/evaluation/analysis` endpoint selected `CPHS` as `bestMode` for all three intensities in this run. Its threat-band recommendation map was also `LOW=CPHS`, `MEDIUM=CPHS`, and `HIGH=CPHS` for the same seed and harness settings.
+
+### What the run shows
+For this seed, CPHS had the lowest compromise ratio and highest resilience score at every tested attack intensity. That comes with a clear usability cost: its `userEffortScore` is much higher than SHCS or NORMAL, so it is not “free” security. SHCS gave a smaller but consistent improvement over NORMAL with only a small modeled effort cost.
+
+ADAPTIVE did not win in this particular run. It stayed close to NORMAL at low intensity and was worse than NORMAL on compromise and resilience at `0.5` and `0.85`. That is useful to report honestly: this adaptive policy still needs stronger threat coupling or tuning before it can support a claim that it always improves outcomes. Also, every `falsePositiveRate` was `0.000`, so this run did not exercise the communication-hold path.
+
 ### Limitations I would put in a report
 - Everything is a **controlled simulator**: graph attacks, budgets, and “effort” are proxies. Good for relative comparisons inside the project, weak for absolute security claims.
 - Labels like “Static Security” are **mapping conventions** for exposition; they are not citations of a specific third-party product or standard.
 - `/evaluation/analysis` can sound authoritative because it uses full sentences, but it is still **post-processing the same random runs**—garbage seed or too few runs still gives noisy text.
 - The LOW/MEDIUM/HIGH recommendations use three fixed intensities; a different grid could change which mode “wins” each band.
+- These results are one reproducible scenario, not a benchmark suite. Different seeds, graph sizes, defense strategies, and adaptive thresholds should be reported before making a broader claim.
 
 ## Advanced Cyber Defense Engine
 The advanced layer extends the base simulation with an adaptive cyber-defense engine built on attack-graph progression, stochastic compromise, and repeated attacker-defender rounds.
