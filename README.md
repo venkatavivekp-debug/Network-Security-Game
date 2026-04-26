@@ -151,9 +151,77 @@ Send-message responses now include `riskScore`, `riskLevel`, `riskReasons`, `rec
 ### Frontend cybersecurity console
 The React frontend ships three role-aware consoles on top of the existing simulation/evaluation pages:
 
-- **Sender Command Console** (`/messaging`, SENDER role) — pick mode `NORMAL`/`SHCS`/`CPHS`, see the requested vs enforced mode, the risk badge, the recovery state, and the human warning message in the response card.
-- **Receiver Challenge Console** (`/messaging`, RECEIVER role) — inbox with risk and recovery badges per message, a CPHS puzzle solver that runs SHA-256 in the browser through the allowed `maxIterations`, attempt counters, expiry hint, and a Decrypt button gated on the puzzle being solved.
-- **Admin SOC** (`/admin`, ADMIN role) — global threat-level slider, held-messages list with one-click release, users-at-risk list with reset action, and a live recent audit feed. Plaintext is never fetched.
+- **Sender Command Console** (`/messaging`, SENDER role) — pick mode `NORMAL`/`SHCS`/`CPHS`, pick a CPHS **puzzle type**, see the requested vs enforced mode, the risk badge, a live risk meter, the recovery state, and the human warning message in the response card.
+- **Receiver Challenge Console** (`/messaging`, RECEIVER role) — inbox with risk and recovery badges per message, a per-type **Puzzle Arena** with timer, attempt indicator dots, success/failure animations, and a Decrypt button gated on the puzzle being solved.
+- **Admin SOC** (`/admin`, ADMIN role) — global threat-level slider, system-pressure snapshot, live alert feed (auto-refresh every 6 s), held-messages list with one-click release, users-at-risk list with reset action, and the full recent audit log. Plaintext is never fetched.
+
+### CPHS multi-type puzzle engine (research extension)
+The CPHS gate now supports four challenge types. Each puzzle is stored with a `puzzleType` discriminator, tied to (message, receiver, generation timestamp), is non-replayable, and is attempt-limited:
+
+| Type            | Receiver task                                                  | Key recovery (server-side)                                       |
+|-----------------|----------------------------------------------------------------|------------------------------------------------------------------|
+| `POW_SHA256`    | Find a nonce `n` such that `SHA-256(challenge + ":" + n) == targetHash`. Runs locally in the browser. | Recovers AES message key by XOR-unwrapping with `H(challenge + ":" + n + ":" + salt)`. |
+| `ARITHMETIC`    | Evaluate the displayed math expression and submit the integer result. | Canonical answer is hashed with the salt, used as the unwrap key. |
+| `ENCODED`       | Decode a base64-encoded phrase and submit it.                  | Canonicalized phrase (`trim` + `lowercase` + collapsed spaces) is hashed with the salt. |
+| `PATTERN`       | Continue the numeric sequence (arithmetic, geometric, or Fibonacci-like) and submit the next value. | Same hash-then-XOR mechanism as the other answer-based types.    |
+
+The engine layout:
+
+- `backend.crypto.PuzzleEngine` is the strategy interface (`generate`, `solve`, `questionText`).
+- `backend.crypto.PuzzleEngineRegistry` indexes Spring-discovered engines by `PuzzleType`.
+- `backend.crypto.AnswerKeyDerivation` is the shared helper that turns canonical answers into a wrapping key, mirroring the cryptographic shape used by the existing PoW puzzle.
+- `backend.service.MessagePuzzleService` dispatches via the registry: it stores `recoveredKey` for non-PoW types after a successful solve, so subsequent decrypt calls do not need the answer again. Failed attempts are persisted, audited, and (when attempts are exhausted) push the message into `HELD` and raise the system-wide attack intensity slightly.
+- `backend.service.CPHSService` calls into the registry on send and exposes a `decryptWithRecoveredKey` path next to the legacy nonce-driven path.
+
+The frontend `PuzzleArena` (`frontend/src/components/cyber/PuzzleArena.tsx`) renders a different UI for every type: nonce search bar with progress + browser-side SHA-256 for `POW_SHA256`, integer answer field for `ARITHMETIC`/`PATTERN`, free-text decode field for `ENCODED`. Every variant shows the same chrome — challenge text, attempt dots, expiry timer (warn under 90 s, critical under 30 s), success/failure animations.
+
+Tests covering this surface:
+
+- `backend.crypto.PuzzleEngineTest` exercises each engine in isolation (round-trip key recovery, wrong-answer rejection, and registry coverage for every `PuzzleType`).
+- `backend.crypto.CphsMultiPuzzleIntegrationTest` calls `CPHSService.encryptWithPuzzle` for every type, parses the metadata the way `MessageService` does, runs the engine `solve`, decrypts the AES-GCM ciphertext, and asserts the original plaintext comes back.
+
+### Unified UI system: cyber command center
+The frontend pulls toward a single cyber-defense aesthetic instead of plain forms:
+
+- **Network visualization** (`components/cyber/NetworkViz.tsx`) — small SVG that renders nodes/edges with `stable / compromised / recovered` palette and a legend. The big animated battlefield on `/simulation` keeps the original canvas-based renderer with its grid, edge disruption, and ring layout (`pages/CommandCenterPage.tsx`).
+- **Attack/Defense/Recovery timeline** (`components/cyber/AttackTimeline.tsx`) plus the existing `cc-stepper` chips on the simulation page expose phase progression with a phase-tinted active step.
+- **Puzzle game screen** (`PuzzleArena.tsx`) — timer pill, progress bar (only shown for the PoW search), attempts dots, success pulse, failure shake.
+- **Risk indicators** (`RiskMeter.tsx`, `ThreatBanner.tsx`) — per-message risk meter (low → critical gradient) and a top-of-page system-pressure banner that pulses red when the level is `CRITICAL`.
+- **Admin SOC** — live alert feed with `cc-pulse-dot`, suspicious-activity list, system-pressure card next to the existing threat-level slider.
+
+All of the new chrome lives in `frontend/src/components/cyber/` so the legacy pages keep working unchanged; the only behavioral change in `MessagingPage` and `CommandCenterPage` is that they now call `adminApi.systemPressure()` on a slow poll to drive `ThreatBanner`.
+
+### Simulation ↔ messaging unification
+The system used to have a real-time graph battlefield on one tab and a CPHS messaging flow on another tab without any cross-talk. We added a single `SystemPressureService` that aggregates four signals into one "pressure" score in `[0, 1]`:
+
+1. Admin-set threat level (`ThreatSignalService.currentAttackIntensity01`).
+2. Recent puzzle failure rate over the last 200 audit events.
+3. Number of users currently flagged as at-risk by `UserBehaviorProfileService`.
+4. Recent escalation/admin-action density in the audit log.
+
+The score is exposed to every authenticated role at `GET /admin/system-pressure` (the endpoint name lives under `/admin` for routing simplicity but is read-only and metadata-only). The frontend polls this endpoint from the messaging page, the simulation page, and the admin SOC, so:
+
+- High `attackIntensity` (manual or simulator-driven) immediately raises the pressure score and the adaptive engine sees the same input it always saw.
+- Puzzle failures push two ways: they are recorded in `UserBehaviorProfile` (so future risk scoring escalates this user) and they bump `attackIntensity01` slightly so the simulation telemetry reflects what is happening in messaging.
+- Admin threat-level changes show up in both messaging UI (warning banner, bigger risk badge) and simulation UI (the `Pressure` KPI tile).
+- Message risk level surfaces in inbox cards and in the SOC alert feed at the same time.
+
+There is no new game-theoretic policy here — only better plumbing of the signals that already exist.
+
+### Adaptive engine transparency
+Two changes make the adaptive engine easier to reason about without changing its logic:
+
+- `AdaptiveModePolicyService.decide` now records the *bucketed* user puzzle burst and threat level into `reasons` (`user_puzzle_burst:high`, `threat_level:critical`, etc.). Every `MessageSendResponse.riskReasons` therefore carries the inputs that drove the decision, not just a generic note.
+- `MessageService.sendMessage` records a separate `ADAPTIVE_ESCALATION` audit event whenever the engine *changes* the requested mode or *holds* a message. The event captures `riskLevel`, `puzzleType`, `reasons`, requested mode, and enforced mode in one place, which is what the SOC alert feed renders for operators.
+
+### How the system behaves under attack
+A short walkthrough of what a reader sees when stress goes up:
+
+1. An admin slides the threat slider to 0.8. `attackIntensity01` is now 0.8.
+2. A sender requests `NORMAL`. The adaptive engine sees `threat_level:high` and `recent_failures:low`, so `effectiveAlgorithmType` is escalated to `CPHS`. The send response carries `escalated=true`, `riskLevel=HIGH`, and `riskReasons=["threat_level:high", ...]`.
+3. The receiver opens the inbox. The CPHS message shows a yellow risk badge, recovery state `CHALLENGE_REQUIRED`, and the `PuzzleArena` panel is rendered for the chosen puzzle type.
+4. The receiver fails the puzzle several times. Each failure is recorded in `UserBehaviorProfile`, audited as `PUZZLE_SOLVE_FAILURE`, and after attempts are exhausted the message goes to `HELD`, attack intensity bumps by 0.05, and the SOC alert feed picks up the audit event.
+5. The admin sees `users-at-risk` populated, `held-messages` populated, and `system-pressure` move into `ELEVATED`/`CRITICAL`. They can release the message or reset the user's failure counters; both produce `MESSAGE_RELEASE` / `RESET_FAILURES` audits and the recovery counter on the user goes up.
 
 ## Experimental Evaluation (research validation)
 This upgrade adds a **research-grade evaluation harness** that turns the platform into an experimental validation system.

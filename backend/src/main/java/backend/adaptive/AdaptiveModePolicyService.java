@@ -34,6 +34,8 @@ public class AdaptiveModePolicyService {
 
         List<String> reasons = new ArrayList<>();
         if (!assessment.getSignals().isEmpty()) reasons.addAll(assessment.getSignals());
+        if (recentPuzzleFailures > 0) reasons.add("user_puzzle_burst=" + recentPuzzleFailures);
+        if (threat >= 0.55) reasons.add("threat_level_" + bucketThreat(threat));
         if (recentEscalations > 0) reasons.add("recent_escalations=" + recentEscalations);
 
         AlgorithmType effective = requestedMode;
@@ -113,6 +115,12 @@ public class AdaptiveModePolicyService {
     private double clamp01(double v) {
         if (!Double.isFinite(v)) return 0;
         return Math.max(0, Math.min(1, v));
+    }
+
+    private static String bucketThreat(double v) {
+        if (v >= 0.85) return "critical";
+        if (v >= 0.70) return "high";
+        return "elevated";
     }
 }
 

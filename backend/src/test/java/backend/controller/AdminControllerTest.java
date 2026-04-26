@@ -2,6 +2,7 @@ package backend.controller;
 
 import backend.adaptive.AdaptiveSecurityProperties;
 import backend.adaptive.AdaptiveSecurityService;
+import backend.adaptive.SystemPressureService;
 import backend.adaptive.ThreatSignalService;
 import backend.adaptive.UserBehaviorProfileService;
 import backend.audit.AuditEventRepository;
@@ -104,6 +105,11 @@ class AdminControllerTest {
             UserBehaviorProfileService behaviorService = new UserBehaviorProfileService(behaviorRepository);
             when(behaviorRepository.save(any(UserBehaviorProfile.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
+            when(auditEventRepository.findTop200ByOrderByCreatedAtDesc()).thenReturn(List.of());
+            when(behaviorRepository.findTop50ByOrderByConsecutiveFailuresDescLastFailureAtDesc())
+                    .thenReturn(List.of());
+            SystemPressureService systemPressureService = new SystemPressureService(
+                    threatSignalService, auditEventRepository, behaviorRepository);
             this.controller = new AdminController(
                     userService,
                     adaptiveSecurityService,
@@ -114,7 +120,8 @@ class AdminControllerTest {
                     messageRepository,
                     puzzleRepository,
                     behaviorRepository,
-                    behaviorService
+                    behaviorService,
+                    systemPressureService
             );
         }
     }

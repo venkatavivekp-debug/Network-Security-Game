@@ -18,6 +18,7 @@ import backend.exception.ResourceNotFoundException;
 import backend.model.AlgorithmType;
 import backend.model.Message;
 import backend.model.MessageStatus;
+import backend.model.PuzzleType;
 import backend.model.RecoveryState;
 import backend.model.Role;
 import backend.model.User;
@@ -119,12 +120,14 @@ public class MessageService {
         int recentFailures = userBehaviorProfileService.recentFailureBurst(sender);
         AdaptiveDecision decision = adaptiveModePolicyService.decide(sender, request.getAlgorithmType(), ip, ua, recentFailures, 0);
 
+        PuzzleType puzzleType = request.getPuzzleType() == null ? PuzzleType.POW_SHA256 : request.getPuzzleType();
         EncryptionPackage packageData = encryptByAlgorithm(
                 decision.getEffectiveMode(),
                 request.getContent(),
                 sender.getUsername(),
                 receiver.getUsername(),
-                decision.getDifficulty()
+                decision.getDifficulty(),
+                puzzleType
         );
 
         Message message = new Message();
@@ -148,6 +151,7 @@ public class MessageService {
             PuzzleDifficulty diff = decision.getDifficulty();
             puzzleRepository.save(messagePuzzleService.buildPuzzleEntity(
                     saved,
+                    fields.puzzleType,
                     fields.challenge,
                     fields.targetHash,
                     fields.maxIterations,
@@ -166,11 +170,33 @@ public class MessageService {
                 Map.of(
                         "requestedMode", decision.getRequestedMode().name(),
                         "effectiveMode", decision.getEffectiveMode().name(),
+                        "puzzleType", puzzleType.name(),
                         "escalated", decision.isEscalated(),
                         "hold", decision.isCommunicationHold(),
                         "reasons", decision.getReasons()
                 )
         );
+
+        // Make the adaptive transition visible: every escalation or hold lands in the
+        // audit timeline so the SOC and the receiver console can explain the decision.
+        if (decision.isEscalated() || decision.isCommunicationHold()) {
+            auditService.record(
+                    AuditEventType.ADAPTIVE_ESCALATION,
+                    senderUsername,
+                    receiver.getUsername(),
+                    ip,
+                    ua,
+                    decision.getAssessment().getRiskScore(),
+                    Map.of(
+                            "requestedMode", decision.getRequestedMode().name(),
+                            "enforcedMode", decision.getEffectiveMode().name(),
+                            "riskLevel", decision.getAssessment().getRiskLevel().name(),
+                            "hold", decision.isCommunicationHold(),
+                            "puzzleType", puzzleType.name(),
+                            "reasons", decision.getReasons()
+                    )
+            );
+        }
 
         LOGGER.info("Message {} sent from {} to {} requested={} effective={} hold={}",
                 saved.getId(),
@@ -273,14 +299,28 @@ public class MessageService {
         } else if (message.getAlgorithmType() == AlgorithmType.CPHS) {
             var puzzle = puzzleRepository.findByMessageId(message.getId())
                     .orElseThrow(() -> new BadRequestException("Puzzle is required for CPHS messages"));
-            if (puzzle.getSolvedAt() == null || puzzle.getSolvedNonce() == null) {
+            if (puzzle.getSolvedAt() == null) {
                 throw new BadRequestException("Puzzle must be solved before decryption");
             }
-            CPHSDecryptionResult decryptionResult = cphsService.decryptAfterPuzzleNonce(
-                    message.getEncryptedContent(),
-                    message.getMetadata(),
-                    puzzle.getSolvedNonce()
-            );
+            CPHSDecryptionResult decryptionResult;
+            if (puzzle.getPuzzleType() == PuzzleType.POW_SHA256) {
+                if (puzzle.getSolvedNonce() == null) {
+                    throw new BadRequestException("Puzzle must be solved before decryption");
+                }
+                decryptionResult = cphsService.decryptAfterPuzzleNonce(
+                        message.getEncryptedContent(),
+                        message.getMetadata(),
+                        puzzle.getSolvedNonce()
+                );
+            } else {
+                if (puzzle.getRecoveredKey() == null || puzzle.getRecoveredKey().isBlank()) {
+                    throw new BadRequestException("Puzzle must be solved before decryption");
+                }
+                decryptionResult = cphsService.decryptWithRecoveredKey(
+                        message.getEncryptedContent(),
+                        puzzle.getRecoveredKey()
+                );
+            }
             plainText = decryptionResult.getPlainText();
             puzzleTimeMs = decryptionResult.getPuzzleSolveTimeMs();
             message.setStatus(MessageStatus.UNLOCKED);
@@ -305,7 +345,8 @@ public class MessageService {
             String plainText,
             String senderUsername,
             String receiverUsername,
-            PuzzleDifficulty difficulty
+            PuzzleDifficulty difficulty,
+            PuzzleType puzzleType
     ) {
         return switch (algorithmType) {
             case NORMAL -> new EncryptionPackage(
@@ -313,10 +354,7 @@ public class MessageService {
                     normalMetadata()
             );
             case SHCS -> shcsService.encryptAndHideHeader(plainText, senderUsername, receiverUsername);
-            case CPHS -> {
-                Integer override = difficulty == null ? null : difficulty.getMaxIterations();
-                yield override == null ? cphsService.encryptWithPuzzle(plainText) : cphsService.encryptWithPuzzle(plainText, override);
-            }
+            case CPHS -> cphsService.encryptWithPuzzle(plainText, puzzleType, difficulty);
         };
     }
 
@@ -390,9 +428,20 @@ public class MessageService {
             Map<String, Object> metadata = objectMapper.readValue(metadataJson, new TypeReference<>() {});
             String challenge = requiredString(metadata, "challenge");
             String targetHash = requiredString(metadata, "targetHash");
-            int maxIterations = requiredInteger(metadata, "maxIterations");
+            int maxIterations = optionalInteger(metadata, "maxIterations");
             String wrappedKey = requiredString(metadata, "wrappedKey");
-            return new CphsPuzzleFields(challenge, targetHash, maxIterations, wrappedKey);
+            PuzzleType puzzleType = PuzzleType.POW_SHA256;
+            Object rawType = metadata.get("puzzleType");
+            if (rawType != null) {
+                try {
+                    puzzleType = PuzzleType.valueOf(rawType.toString());
+                } catch (IllegalArgumentException ex) {
+                    throw new BadRequestException("Unknown puzzleType in metadata: " + rawType);
+                }
+            }
+            return new CphsPuzzleFields(puzzleType, challenge, targetHash, maxIterations, wrappedKey);
+        } catch (BadRequestException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new BadRequestException("Invalid CPHS metadata format");
         }
@@ -421,6 +470,21 @@ public class MessageService {
         }
     }
 
-    private record CphsPuzzleFields(String challenge, String targetHash, int maxIterations, String wrappedKey) {
+    private int optionalInteger(Map<String, Object> metadata, String key) {
+        Object value = metadata.get(key);
+        if (value == null) {
+            return 0;
+        }
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            return Integer.parseInt(value.toString());
+        } catch (NumberFormatException ex) {
+            return 0;
+        }
+    }
+
+    private record CphsPuzzleFields(PuzzleType puzzleType, String challenge, String targetHash, int maxIterations, String wrappedKey) {
     }
 }

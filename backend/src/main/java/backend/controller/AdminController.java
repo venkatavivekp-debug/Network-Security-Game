@@ -3,6 +3,7 @@ package backend.controller;
 import backend.adaptive.AdaptiveSecurityService;
 import backend.adaptive.RecoveryStateMapper;
 import backend.adaptive.RiskAssessment;
+import backend.adaptive.SystemPressureService;
 import backend.adaptive.ThreatSignalService;
 import backend.adaptive.UserBehaviorProfileService;
 import backend.audit.AuditEvent;
@@ -55,6 +56,7 @@ public class AdminController {
     private final PuzzleRepository puzzleRepository;
     private final UserBehaviorProfileRepository behaviorRepository;
     private final UserBehaviorProfileService behaviorService;
+    private final SystemPressureService systemPressureService;
 
     public AdminController(
             UserService userService,
@@ -66,7 +68,8 @@ public class AdminController {
             MessageRepository messageRepository,
             PuzzleRepository puzzleRepository,
             UserBehaviorProfileRepository behaviorRepository,
-            UserBehaviorProfileService behaviorService
+            UserBehaviorProfileService behaviorService,
+            SystemPressureService systemPressureService
     ) {
         this.userService = userService;
         this.adaptiveSecurityService = adaptiveSecurityService;
@@ -78,6 +81,7 @@ public class AdminController {
         this.puzzleRepository = puzzleRepository;
         this.behaviorRepository = behaviorRepository;
         this.behaviorService = behaviorService;
+        this.systemPressureService = systemPressureService;
     }
 
     @PostMapping("/lock-user")
@@ -170,6 +174,23 @@ public class AdminController {
     public ResponseEntity<ApiSuccessResponse<Map<String, Object>>> threatLevel(HttpServletRequest httpRequest) {
         double v = threatSignalService.currentAttackIntensity01();
         return ResponseEntity.ok(ApiResponseUtil.success("Threat level fetched", httpRequest.getRequestURI(), Map.of("attackIntensity01", v)));
+    }
+
+    /**
+     * Returns the current system pressure: a single score that combines the admin
+     * threat slider, the recent puzzle failure rate, and the number of users at
+     * risk. Both the admin SOC and the simulation battlefield read this so the UI
+     * stays consistent with what the adaptive engine sees.
+     */
+    @GetMapping("/system-pressure")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SENDER') or hasRole('RECEIVER')")
+    public ResponseEntity<ApiSuccessResponse<Map<String, Object>>> systemPressure(HttpServletRequest httpRequest) {
+        SystemPressureService.Snapshot snapshot = systemPressureService.snapshot();
+        Map<String, Object> body = new HashMap<>();
+        body.put("pressure", snapshot.pressure());
+        body.put("level", snapshot.level());
+        body.put("details", snapshot.details());
+        return ResponseEntity.ok(ApiResponseUtil.success("System pressure computed", httpRequest.getRequestURI(), body));
     }
 
     @PostMapping("/threat-level")
