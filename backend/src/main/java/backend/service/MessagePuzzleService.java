@@ -1,9 +1,12 @@
 package backend.service;
 
+import backend.adaptive.ThreatSignalService;
 import backend.adaptive.UserBehaviorProfileService;
 import backend.audit.AuditEventType;
 import backend.audit.AuditService;
 import backend.config.PuzzleProperties;
+import backend.crypto.PuzzleEngine;
+import backend.crypto.PuzzleEngineRegistry;
 import backend.dto.PuzzleChallengeResponse;
 import backend.dto.PuzzleSolveRequest;
 import backend.dto.PuzzleSolveResponse;
@@ -25,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -35,29 +39,32 @@ public class MessagePuzzleService {
     private final PuzzleRepository puzzleRepository;
     private final MessageRepository messageRepository;
     private final UserService userService;
-    private final PuzzleService puzzleService;
+    private final PuzzleEngineRegistry puzzleEngineRegistry;
     private final PuzzleProperties puzzleProperties;
     private final UserBehaviorProfileService userBehaviorProfileService;
     private final AuditService auditService;
+    private final ThreatSignalService threatSignalService;
     private final Validator validator;
 
     public MessagePuzzleService(
             PuzzleRepository puzzleRepository,
             MessageRepository messageRepository,
             UserService userService,
-            PuzzleService puzzleService,
+            PuzzleEngineRegistry puzzleEngineRegistry,
             PuzzleProperties puzzleProperties,
             UserBehaviorProfileService userBehaviorProfileService,
             AuditService auditService,
+            ThreatSignalService threatSignalService,
             Validator validator
     ) {
         this.puzzleRepository = puzzleRepository;
         this.messageRepository = messageRepository;
         this.userService = userService;
-        this.puzzleService = puzzleService;
+        this.puzzleEngineRegistry = puzzleEngineRegistry;
         this.puzzleProperties = puzzleProperties;
         this.userBehaviorProfileService = userBehaviorProfileService;
         this.auditService = auditService;
+        this.threatSignalService = threatSignalService;
         this.validator = validator;
     }
 
@@ -71,18 +78,24 @@ public class MessagePuzzleService {
         Puzzle puzzle = puzzleRepository.findByMessageId(messageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Puzzle not found for message: " + messageId));
 
+        PuzzleEngine engine = puzzleEngineRegistry.forType(puzzle.getPuzzleType());
+
         PuzzleChallengeResponse response = new PuzzleChallengeResponse();
         response.setMessageId(messageId);
         response.setPuzzleType(puzzle.getPuzzleType());
         response.setChallenge(puzzle.getChallenge());
-        response.setTargetHash(puzzle.getTargetHash());
+        // Hash gating material is only meaningful for PoW puzzles. Other types
+        // do not need to expose targetHash to the client because verification
+        // happens server-side from the submitted answer.
+        if (puzzle.getPuzzleType() == PuzzleType.POW_SHA256) {
+            response.setTargetHash(puzzle.getTargetHash());
+        }
         response.setMaxIterations(puzzle.getMaxIterations());
         response.setAttemptsAllowed(puzzle.getAttemptsAllowed());
         response.setAttemptsUsed(puzzle.getAttemptsUsed());
         response.setExpiresAt(puzzle.getExpiresAt());
         response.setSolved(puzzle.getSolvedAt() != null);
-
-        response.setQuestion(buildQuestion(puzzle));
+        response.setQuestion(engine.questionText(puzzle));
         return response;
     }
 
@@ -99,14 +112,7 @@ public class MessagePuzzleService {
                 .orElseThrow(() -> new ResourceNotFoundException("Puzzle not found for message: " + messageId));
 
         if (puzzle.getSolvedAt() != null) {
-            PuzzleSolveResponse response = new PuzzleSolveResponse();
-            response.setMessageId(messageId);
-            response.setSolved(true);
-            response.setAttemptsAllowed(puzzle.getAttemptsAllowed());
-            response.setAttemptsUsed(puzzle.getAttemptsUsed());
-            response.setSolvedAt(puzzle.getSolvedAt());
-            response.setStatus("Puzzle already solved");
-            return response;
+            return alreadySolvedResponse(messageId, puzzle);
         }
 
         if (LocalDateTime.now().isAfter(puzzle.getExpiresAt())) {
@@ -116,22 +122,20 @@ public class MessagePuzzleService {
             throw new BadRequestException("Puzzle attempts exhausted");
         }
 
-        // Consume an attempt, then verify.
         puzzle.setAttemptsUsed(puzzle.getAttemptsUsed() + 1);
+        PuzzleEngine engine = puzzleEngineRegistry.forType(puzzle.getPuzzleType());
 
         try {
-            int nonce = request.getNonce();
-            if (nonce >= puzzle.getMaxIterations()) {
-                userBehaviorProfileService.recordPuzzleFailure(receiver);
-                puzzleRepository.save(puzzle);
-                throw new BadRequestException("nonce must be less than maxIterations");
-            }
-            // Verifies correctness by matching SHA256(challenge:nonce) to targetHash.
-            puzzleService.recoverKeyFromNonce(puzzle.getChallenge(), puzzle.getTargetHash(), nonce, puzzle.getWrappedKey());
+            PuzzleEngine.SolveResult solveResult = engine.solve(puzzle, request);
 
             LocalDateTime solvedAt = LocalDateTime.now();
             puzzle.setSolvedAt(solvedAt);
-            puzzle.setSolvedNonce(nonce);
+            puzzle.setSolvedNonce(solveResult.solvedNonce());
+            puzzle.setSolvedAnswerHash(solveResult.solvedAnswerHash());
+            // For non-PoW puzzles we keep the AES key around so subsequent decrypt calls can succeed.
+            if (puzzle.getPuzzleType() != PuzzleType.POW_SHA256 && solveResult.recoveredKey() != null) {
+                puzzle.setRecoveredKey(Base64.getEncoder().encodeToString(solveResult.recoveredKey()));
+            }
             message.setStatus(MessageStatus.UNLOCKED);
 
             long solveTimeMs = Math.max(0, Duration.between(message.getCreatedAt(), solvedAt).toMillis());
@@ -145,6 +149,7 @@ public class MessagePuzzleService {
                     null,
                     Map.of(
                             "messageId", message.getId(),
+                            "puzzleType", puzzle.getPuzzleType().name(),
                             "attemptsUsed", puzzle.getAttemptsUsed(),
                             "solveTimeMs", solveTimeMs
                     )
@@ -162,9 +167,6 @@ public class MessagePuzzleService {
             response.setStatus("Puzzle solved. Message unlocked.");
             return response;
         } catch (BadRequestException ex) {
-            // already accounted for above (nonce out of range).
-            throw ex;
-        } catch (RuntimeException ex) {
             userBehaviorProfileService.recordPuzzleFailure(receiver);
             auditService.record(
                     AuditEventType.PUZZLE_SOLVE_FAILURE,
@@ -175,28 +177,53 @@ public class MessagePuzzleService {
                     null,
                     Map.of(
                             "messageId", message.getId(),
+                            "puzzleType", puzzle.getPuzzleType().name(),
                             "attemptsUsed", puzzle.getAttemptsUsed(),
                             "reason", ex.getMessage()
                     )
             );
-            // Auto-hold the message after exhausting attempts so the recovery state machine can take over.
             if (puzzle.getAttemptsUsed() >= puzzle.getAttemptsAllowed() && message.getStatus() != MessageStatus.HELD) {
                 message.setStatus(MessageStatus.HELD);
                 message.setHoldReason("PUZZLE_ATTEMPTS_EXHAUSTED");
                 messageRepository.save(message);
+                // Exhausted attempts contribute to the system-wide attack pressure so the
+                // simulation view reacts; we add a small bump that can never push past 1.0.
+                double bumped = Math.min(1.0, threatSignalService.currentAttackIntensity01() + 0.05);
+                threatSignalService.setAttackIntensity01(bumped);
             }
             puzzleRepository.save(puzzle);
             throw ex;
         }
     }
 
+    private PuzzleSolveResponse alreadySolvedResponse(Long messageId, Puzzle puzzle) {
+        PuzzleSolveResponse response = new PuzzleSolveResponse();
+        response.setMessageId(messageId);
+        response.setSolved(true);
+        response.setAttemptsAllowed(puzzle.getAttemptsAllowed());
+        response.setAttemptsUsed(puzzle.getAttemptsUsed());
+        response.setSolvedAt(puzzle.getSolvedAt());
+        response.setStatus("Puzzle already solved");
+        return response;
+    }
+
     @Transactional
     public Puzzle buildPuzzleEntity(Message message, String challenge, String targetHash, int maxIterations, String wrappedKeyBase64) {
-        return buildPuzzleEntity(message, challenge, targetHash, maxIterations, wrappedKeyBase64, puzzleProperties.getAttemptsAllowed(), puzzleProperties.getTimeLimitSeconds());
+        return buildPuzzleEntity(
+                message,
+                PuzzleType.POW_SHA256,
+                challenge,
+                targetHash,
+                maxIterations,
+                wrappedKeyBase64,
+                puzzleProperties.getAttemptsAllowed(),
+                puzzleProperties.getTimeLimitSeconds()
+        );
     }
 
     public Puzzle buildPuzzleEntity(
             Message message,
+            PuzzleType puzzleType,
             String challenge,
             String targetHash,
             int maxIterations,
@@ -206,10 +233,10 @@ public class MessagePuzzleService {
     ) {
         Puzzle puzzle = new Puzzle();
         puzzle.setMessage(message);
-        puzzle.setPuzzleType(PuzzleType.POW_SHA256);
+        puzzle.setPuzzleType(puzzleType == null ? PuzzleType.POW_SHA256 : puzzleType);
         puzzle.setChallenge(challenge);
         puzzle.setTargetHash(targetHash);
-        puzzle.setMaxIterations(maxIterations);
+        puzzle.setMaxIterations(Math.max(0, maxIterations));
         puzzle.setWrappedKey(wrappedKeyBase64);
         puzzle.setAttemptsAllowed(Math.max(1, Math.min(6, attemptsAllowed)));
         puzzle.setAttemptsUsed(0);
@@ -229,10 +256,6 @@ public class MessagePuzzleService {
                 .orElseThrow(() -> new ResourceNotFoundException("Message not found for receiver: " + messageId));
     }
 
-    private String buildQuestion(Puzzle puzzle) {
-        return "Find a nonce n in [0, " + puzzle.getMaxIterations() + ") such that SHA-256(challenge + ':' + n) equals targetHash.";
-    }
-
     private <T> void validateBean(T bean) {
         Set<ConstraintViolation<T>> violations = validator.validate(bean);
         if (!violations.isEmpty()) {
@@ -243,4 +266,3 @@ public class MessagePuzzleService {
         }
     }
 }
-

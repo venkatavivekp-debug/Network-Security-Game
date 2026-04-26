@@ -1,16 +1,20 @@
 package backend.service;
 
+import backend.adaptive.PuzzleDifficulty;
 import backend.config.CphsProperties;
 import backend.config.CryptoProperties;
 import backend.crypto.CPHSDecryptionResult;
 import backend.crypto.EncryptionPackage;
-import backend.crypto.PuzzleDescriptor;
+import backend.crypto.PuzzleEngine;
+import backend.crypto.PuzzleEngineRegistry;
 import backend.exception.BadRequestException;
+import backend.model.PuzzleType;
 import backend.util.EncryptionUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -19,6 +23,7 @@ public class CPHSService {
 
     private final CphsProperties cphsProperties;
     private final CryptoProperties cryptoProperties;
+    private final PuzzleEngineRegistry puzzleEngineRegistry;
     private final PuzzleService puzzleService;
     private final EncryptionUtil encryptionUtil;
     private final ObjectMapper objectMapper;
@@ -26,27 +31,32 @@ public class CPHSService {
     public CPHSService(
             CphsProperties cphsProperties,
             CryptoProperties cryptoProperties,
+            PuzzleEngineRegistry puzzleEngineRegistry,
             PuzzleService puzzleService,
             EncryptionUtil encryptionUtil,
             ObjectMapper objectMapper
     ) {
         this.cphsProperties = cphsProperties;
         this.cryptoProperties = cryptoProperties;
+        this.puzzleEngineRegistry = puzzleEngineRegistry;
         this.puzzleService = puzzleService;
         this.encryptionUtil = encryptionUtil;
         this.objectMapper = objectMapper;
     }
 
     public EncryptionPackage encryptWithPuzzle(String plainText) {
-        return encryptWithPuzzle(plainText, cphsProperties.getRandomKeyBytes(), null);
+        return encryptWithPuzzle(plainText, PuzzleType.POW_SHA256, null);
     }
 
-    public EncryptionPackage encryptWithPuzzle(String plainText, Integer overrideMaxIterations) {
-        return encryptWithPuzzle(plainText, cphsProperties.getRandomKeyBytes(), overrideMaxIterations);
+    public EncryptionPackage encryptWithPuzzle(String plainText, PuzzleDifficulty difficulty) {
+        return encryptWithPuzzle(plainText, PuzzleType.POW_SHA256, difficulty);
     }
 
-    private EncryptionPackage encryptWithPuzzle(String plainText, int randomKeyBytes, Integer overrideMaxIterations) {
-        byte[] randomMessageKey = encryptionUtil.randomBytes(randomKeyBytes);
+    public EncryptionPackage encryptWithPuzzle(String plainText, PuzzleType puzzleType, PuzzleDifficulty difficulty) {
+        if (puzzleType == null) {
+            puzzleType = PuzzleType.POW_SHA256;
+        }
+        byte[] randomMessageKey = encryptionUtil.randomBytes(cphsProperties.getRandomKeyBytes());
 
         String encryptedContent = encryptionUtil.encrypt(
                 plainText,
@@ -56,46 +66,25 @@ public class CPHSService {
                 cryptoProperties.getGcmTagLengthBits()
         );
 
-        PuzzleService.PuzzlePackagingResult packagingResult = overrideMaxIterations == null
-                ? puzzleService.createPuzzlePackage(randomMessageKey)
-                : puzzleService.createPuzzlePackage(randomMessageKey, overrideMaxIterations);
-        PuzzleDescriptor descriptor = packagingResult.getDescriptor();
+        PuzzleEngine engine = puzzleEngineRegistry.forType(puzzleType);
+        PuzzleEngine.GeneratedPuzzle generated = engine.generate(randomMessageKey, difficulty);
 
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("scheme", "CPHS");
-        metadata.put("challenge", descriptor.getChallenge());
-        metadata.put("targetHash", descriptor.getTargetHash());
-        metadata.put("maxIterations", descriptor.getMaxIterations());
-        metadata.put("wrappedKey", packagingResult.getWrappedKeyBase64());
-
+        metadata.put("puzzleType", puzzleType.name());
+        metadata.put("challenge", generated.challenge());
+        metadata.put("targetHash", generated.targetHash());
+        metadata.put("maxIterations", generated.maxIterations());
+        metadata.put("wrappedKey", generated.wrappedKey());
+        if (generated.metadata() != null) {
+            metadata.putAll(generated.metadata());
+            metadata.put("scheme", "CPHS");
+            metadata.put("puzzleType", puzzleType.name());
+        }
         return new EncryptionPackage(encryptedContent, toJson(metadata));
     }
 
-    public CPHSDecryptionResult decryptAfterPuzzleSolve(String encryptedContent, String metadataJson) {
-        Map<String, Object> metadata = fromJson(metadataJson);
-
-        String challenge = requiredString(metadata, "challenge");
-        String targetHash = requiredString(metadata, "targetHash");
-        int maxIterations = requiredInteger(metadata, "maxIterations");
-        String wrappedKey = requiredString(metadata, "wrappedKey");
-
-        PuzzleService.PuzzleSolveResult solveResult = puzzleService.solveAndRecoverKey(
-                challenge,
-                targetHash,
-                maxIterations,
-                wrappedKey
-        );
-
-        String plainText = encryptionUtil.decrypt(
-                encryptedContent,
-                solveResult.getRecoveredKey(),
-                cryptoProperties.getAesTransformation(),
-                cryptoProperties.getGcmTagLengthBits()
-        );
-
-        return new CPHSDecryptionResult(plainText, solveResult.getSolveTimeMs());
-    }
-
+    /** Decrypt after the receiver has solved a SHA-256 PoW puzzle (legacy path). */
     public CPHSDecryptionResult decryptAfterPuzzleNonce(String encryptedContent, String metadataJson, int nonce) {
         Map<String, Object> metadata = fromJson(metadataJson);
 
@@ -120,6 +109,26 @@ public class CPHSService {
 
         long totalTime = System.currentTimeMillis() - start;
         return new CPHSDecryptionResult(plainText, totalTime);
+    }
+
+    /**
+     * Decrypt with a previously recovered raw key. Used for puzzle types whose
+     * answer is not numeric, where {@link Puzzle#getRecoveredKey()} stores the
+     * unwrapped key after a successful solve.
+     */
+    public CPHSDecryptionResult decryptWithRecoveredKey(String encryptedContent, String recoveredKeyBase64) {
+        if (recoveredKeyBase64 == null || recoveredKeyBase64.isBlank()) {
+            throw new BadRequestException("Recovered key is missing for this puzzle");
+        }
+        byte[] recoveredKey = Base64.getDecoder().decode(recoveredKeyBase64);
+        long start = System.currentTimeMillis();
+        String plainText = encryptionUtil.decrypt(
+                encryptedContent,
+                recoveredKey,
+                cryptoProperties.getAesTransformation(),
+                cryptoProperties.getGcmTagLengthBits()
+        );
+        return new CPHSDecryptionResult(plainText, System.currentTimeMillis() - start);
     }
 
     private Map<String, Object> fromJson(String json) {

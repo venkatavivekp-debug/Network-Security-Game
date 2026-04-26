@@ -1,6 +1,7 @@
 package backend.dto;
 
 import backend.model.AlgorithmType;
+import backend.model.PuzzleType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -19,6 +20,13 @@ public class MessageSendRequest {
 
     @NotNull(message = "algorithmType is required")
     private AlgorithmType algorithmType;
+
+    /**
+     * Optional. When {@link #algorithmType} is CPHS the sender can pick a puzzle
+     * challenge type. Defaults to {@link PuzzleType#POW_SHA256} for backward
+     * compatibility.
+     */
+    private PuzzleType puzzleType;
 
     public String getReceiverUsername() {
         return receiverUsername;
@@ -42,5 +50,13 @@ public class MessageSendRequest {
 
     public void setAlgorithmType(AlgorithmType algorithmType) {
         this.algorithmType = algorithmType;
+    }
+
+    public PuzzleType getPuzzleType() {
+        return puzzleType;
+    }
+
+    public void setPuzzleType(PuzzleType puzzleType) {
+        this.puzzleType = puzzleType;
     }
 }

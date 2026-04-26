@@ -57,6 +57,23 @@ public class Puzzle {
     @Column(name = "solved_nonce")
     private Integer solvedNonce;
 
+    /**
+     * For non-POW puzzle types, holds the AES message key (Base64) that was
+     * unwrapped at solve time. For POW puzzles this stays null because the key
+     * can be re-derived from {@link #solvedNonce}. This is the same security
+     * profile as {@link #solvedNonce}: once a puzzle is solved the gating
+     * material is no longer secret.
+     */
+    @Column(name = "recovered_key", columnDefinition = "LONGTEXT")
+    private String recoveredKey;
+
+    /**
+     * Hex SHA-256 of the canonical answer that solved a non-POW puzzle. Stored
+     * for audit / non-replay checks; never the raw answer itself.
+     */
+    @Column(name = "solved_answer_hash", length = 64)
+    private String solvedAnswerHash;
+
     public Long getId() {
         return id;
     }
@@ -151,6 +168,22 @@ public class Puzzle {
 
     public void setSolvedNonce(Integer solvedNonce) {
         this.solvedNonce = solvedNonce;
+    }
+
+    public String getRecoveredKey() {
+        return recoveredKey;
+    }
+
+    public void setRecoveredKey(String recoveredKey) {
+        this.recoveredKey = recoveredKey;
+    }
+
+    public String getSolvedAnswerHash() {
+        return solvedAnswerHash;
+    }
+
+    public void setSolvedAnswerHash(String solvedAnswerHash) {
+        this.solvedAnswerHash = solvedAnswerHash;
     }
 }
 
