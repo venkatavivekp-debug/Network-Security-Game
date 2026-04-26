@@ -20,10 +20,10 @@ const TYPE_LABEL: Record<PuzzleType, string> = {
 };
 
 const TYPE_TAGLINE: Record<PuzzleType, string> = {
-  POW_SHA256: "Run a SHA-256 nonce search to unlock the message key.",
-  ARITHMETIC: "Evaluate the math expression to derive the unlock key.",
-  ENCODED: "Decode the obfuscated phrase to recover the message key.",
-  PATTERN: "Continue the sequence to unlock the message key.",
+  POW_SHA256: "Find a nonce so SHA-256(challenge:nonce) matches the target hash.",
+  ARITHMETIC: "Evaluate the math expression and submit the integer.",
+  ENCODED: "Decode the base64 phrase and submit the original text.",
+  PATTERN: "Continue the sequence — return the next value.",
 };
 
 export function PuzzleArena({
@@ -43,6 +43,7 @@ export function PuzzleArena({
   const [answer, setAnswer] = useState("");
 
   const startedAt = useRef<number>(Date.now());
+  const totalSeconds = useTotalWindow(challenge?.expiresAt ?? null);
 
   useEffect(() => {
     startedAt.current = Date.now();
@@ -66,15 +67,20 @@ export function PuzzleArena({
     );
   }, [remainingSeconds]);
 
+  const timerFraction = useMemo(() => {
+    if (remainingSeconds == null || totalSeconds == null || totalSeconds <= 0) return null;
+    return Math.max(0, Math.min(1, remainingSeconds / totalSeconds));
+  }, [remainingSeconds, totalSeconds]);
+
   if (!challenge) {
     return <div className="cc-empty">Loading puzzle…</div>;
   }
 
   if (challenge.solved) {
     return (
-      <div className="cc-puzzle">
+      <div className="cc-puzzle is-solved">
         <div className="cc-puzzle-banner is-success">
-          Puzzle solved. The message key has been recovered — you may decrypt the message now.
+          Puzzle solved. Message key recovered — Decrypt is unlocked.
         </div>
       </div>
     );
@@ -94,12 +100,17 @@ export function PuzzleArena({
       if (res.solved) {
         const elapsed = ((Date.now() - startedAt.current) / 1000).toFixed(1);
         setOutcome("success");
-        setOutcomeMessage(`Unlock granted in ${elapsed}s. Decrypt available.`);
+        setOutcomeMessage(`Solved in ${elapsed}s. Decrypt is now available.`);
         onNotice("Puzzle solved.");
         await onSolved();
       } else {
+        const left = res.attemptsAllowed - res.attemptsUsed;
         setOutcome("failure");
-        setOutcomeMessage(`Rejected. ${res.attemptsAllowed - res.attemptsUsed} attempt(s) left.`);
+        setOutcomeMessage(
+          left > 0
+            ? `Wrong answer. ${left} attempt${left === 1 ? "" : "s"} left before the message is held.`
+            : "No attempts remaining. Message moved to admin review.",
+        );
         onNotice(null);
         await onSolved();
       }
@@ -108,7 +119,6 @@ export function PuzzleArena({
       const msg = err instanceof ApiError ? err.message : "Server rejected the answer.";
       setOutcomeMessage(msg);
       onNotice(null);
-      // Still refresh so attempt counters update
       try { await onSolved(); } catch { /* noop */ }
     } finally {
       setSolving(false);
@@ -154,8 +164,10 @@ export function PuzzleArena({
   const headerLabel = TYPE_LABEL[challenge.puzzleType] ?? challenge.puzzleType;
   const tagline = TYPE_TAGLINE[challenge.puzzleType] ?? "";
 
+  const arenaClass = `cc-puzzle ${outcome === "success" ? "is-success" : ""} ${outcome === "failure" ? "is-failure" : ""}`;
+
   return (
-    <div className="cc-puzzle" aria-label={`Cryptographic puzzle: ${headerLabel}`}>
+    <div className={arenaClass} aria-label={`Cryptographic puzzle: ${headerLabel}`}>
       <div className="cc-puzzle-header">
         <div className="cc-puzzle-title">Cryptographic challenge</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -163,6 +175,15 @@ export function PuzzleArena({
           {expiryPill}
         </div>
       </div>
+
+      {timerFraction != null ? (
+        <div
+          className={`cc-puzzle-timerbar ${remainingSeconds! < 30 ? "is-crit" : remainingSeconds! < 90 ? "is-warn" : ""}`}
+          aria-hidden
+        >
+          <span style={{ width: `${(timerFraction * 100).toFixed(1)}%` }} />
+        </div>
+      ) : null}
 
       <div className="cc-puzzle-question">{challenge.question || tagline}</div>
 
@@ -230,9 +251,7 @@ export function PuzzleArena({
           ))}
           <span style={{ marginLeft: 6 }}>{attemptsLeft}/{challenge.attemptsAllowed} left</span>
         </span>
-        <span>
-          ID #{challenge.messageId} · type {challenge.puzzleType}
-        </span>
+        <span>#{challenge.messageId} · {challenge.puzzleType}</span>
       </div>
 
       {outcome === "success" && outcomeMessage ? (
@@ -241,10 +260,10 @@ export function PuzzleArena({
       {outcome === "failure" && outcomeMessage ? (
         <div className="cc-puzzle-banner is-failure">{outcomeMessage}</div>
       ) : null}
-      {expired ? (
+      {expired && outcome !== "success" ? (
         <div className="cc-puzzle-banner is-failure">Challenge window expired. Ask the sender to re-issue.</div>
       ) : null}
-      {lockedOut ? (
+      {lockedOut && outcome !== "success" ? (
         <div className="cc-puzzle-banner is-failure">No attempts remaining. Message moved to admin review.</div>
       ) : null}
     </div>
@@ -311,6 +330,19 @@ function useExpiryCountdown(expiresAt: string | null): number | null {
   }, [expiresAt]);
 
   return remaining;
+}
+
+function useTotalWindow(expiresAt: string | null): number | null {
+  const ref = useRef<{ exp: string | null; total: number | null }>({ exp: null, total: null });
+  if (expiresAt !== ref.current.exp) {
+    if (!expiresAt) {
+      ref.current = { exp: null, total: null };
+    } else {
+      const total = Math.max(1, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+      ref.current = { exp: expiresAt, total };
+    }
+  }
+  return ref.current.total;
 }
 
 function formatTimer(seconds: number): string {

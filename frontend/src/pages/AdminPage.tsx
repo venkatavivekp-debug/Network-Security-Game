@@ -21,6 +21,8 @@ const ALERT_TONE: Record<string, string> = {
   MESSAGE_DECRYPT: "tone-info",
 };
 
+const CRITICAL_EVENTS = new Set(["ADAPTIVE_ESCALATION", "MESSAGE_HOLD", "PUZZLE_SOLVE_FAILURE"]);
+
 export function AdminPage() {
   const { user } = useAuth();
   const [held, setHeld] = useState<HeldMessageView[]>([]);
@@ -46,7 +48,7 @@ export function AdminPage() {
       ]);
       setHeld(h);
       setRisk(u);
-      setAudit(a.slice(0, 50));
+      setAudit(a.slice(0, 20));
       setIntensity(t.attackIntensity01 ?? 0);
       setPressure(p);
     } catch (err) {
@@ -76,6 +78,7 @@ export function AdminPage() {
   async function release(messageId: number) {
     try {
       await adminApi.release(messageId);
+      setNotice(`Message #${messageId} released.`);
       await refresh();
     } catch (err) {
       setNotice(err instanceof ApiError ? err.message : "Release failed.");
@@ -85,6 +88,7 @@ export function AdminPage() {
   async function reset(username: string) {
     try {
       await adminApi.resetFailures(username);
+      setNotice(`Failure counters reset for ${username}.`);
       await refresh();
     } catch (err) {
       setNotice(err instanceof ApiError ? err.message : "Reset failed.");
@@ -101,7 +105,7 @@ export function AdminPage() {
   }
 
   return (
-    <div className="cc-page" style={{ display: "grid", gap: 16 }}>
+    <div className="cc-page">
       <ThreatBanner snapshot={pressure} />
       <section className="cc-surface" style={{ padding: 0 }}>
         <div className="cc-panel-header">
@@ -110,13 +114,13 @@ export function AdminPage() {
             {busy ? "Refreshing…" : "Refresh"}
           </button>
         </div>
-        <div className="cc-panel-body" style={{ display: "grid", gap: 14 }}>
+        <div className="cc-panel-body cc-soc">
           {notice ? <div className="cc-notice">{notice}</div> : null}
 
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
-            <div className="cc-surface" style={{ padding: 12, display: "grid", gap: 8 }}>
-              <strong>Global threat level</strong>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div className="cc-soc__row cc-soc__row--two">
+            <div className="cc-soc__card">
+              <div className="cc-soc__card-title">Global threat level</div>
+              <div className="cc-soc__slider">
                 <input
                   type="range"
                   min={0}
@@ -124,130 +128,102 @@ export function AdminPage() {
                   step={0.05}
                   value={intensity}
                   onChange={(e) => void setThreat(parseFloat(e.target.value))}
-                  style={{ flex: 1 }}
                 />
                 <code>{intensity.toFixed(2)}</code>
               </div>
-              <div style={{ color: "var(--cc-muted)", fontSize: 12 }}>
-                Drives the adaptive engine's attack intensity input.
-              </div>
+              <div className="cc-soc__hint">Drives the adaptive engine's attack-intensity input.</div>
             </div>
 
-            <div className="cc-surface" style={{ padding: 12, display: "grid", gap: 8 }}>
-              <strong>System pressure</strong>
+            <div className="cc-soc__card">
+              <div className="cc-soc__card-title">System pressure</div>
               {pressure ? (
-                <>
-                  <div className="cc-result-row">
-                    <span>Level</span>
-                    <span>{pressure.level}</span>
-                  </div>
-                  <div className="cc-result-row">
-                    <span>Pressure</span>
-                    <span>{(pressure.pressure * 100).toFixed(0)}%</span>
-                  </div>
-                  <div className="cc-result-row">
-                    <span>Recent puzzle failures</span>
-                    <span>
-                      {pressure.details.recentPuzzleFailures} / {pressure.details.recentPuzzleAttempts}
-                    </span>
-                  </div>
-                  <div className="cc-result-row">
-                    <span>Users at risk</span>
-                    <span>{pressure.details.usersAtRisk}</span>
-                  </div>
-                  <div className="cc-result-row">
-                    <span>Recent escalations</span>
-                    <span>{pressure.details.recentEscalations}</span>
-                  </div>
-                </>
+                <div className="cc-soc__pressure">
+                  <div><span>Level</span><strong>{pressure.level}</strong></div>
+                  <div><span>Pressure</span><strong>{(pressure.pressure * 100).toFixed(0)}%</strong></div>
+                  <div><span>Puzzle failures</span><strong>{pressure.details.recentPuzzleFailures} / {pressure.details.recentPuzzleAttempts}</strong></div>
+                  <div><span>Users at risk</span><strong>{pressure.details.usersAtRisk}</strong></div>
+                  <div><span>Escalations</span><strong>{pressure.details.recentEscalations}</strong></div>
+                </div>
               ) : (
                 <div className="cc-empty">Pressure not available.</div>
               )}
             </div>
           </div>
 
-          <div className="cc-surface" style={{ padding: 12, display: "grid", gap: 10 }}>
-            <strong>Network status map</strong>
+          <div className="cc-soc__card">
+            <div className="cc-soc__card-title">Network status</div>
             <NetworkViz nodes={buildNodes(held, risk)} edges={buildEdges(held)} />
-            <div style={{ color: "var(--cc-muted)", fontSize: 12 }}>
-              Synthesized from held messages and users-at-risk. Compromised nodes are users with active failures or
-              held inboxes; recovered nodes are users whose recovery counter is non-zero.
+            <div className="cc-soc__hint">
+              Compromised: users with active failures or held inboxes. Recovered: users with non-zero recovery counter.
             </div>
           </div>
 
-          <div className="cc-surface" style={{ padding: 12 }}>
-            <strong>
+          <div className="cc-soc__card">
+            <div className="cc-soc__card-title">
               <span className="cc-pulse-dot" /> Live alert feed
-            </strong>
-            <ul className="cc-feed-list" style={{ marginTop: 8 }}>
+            </div>
+            <ul className="cc-feed-list">
               {audit.length === 0 ? <li className="cc-feed-empty">No recent activity.</li> : null}
-              {audit.slice(0, 12).map((e) => (
-                <li key={e.id} className="cc-feed-item">
-                  <span className="cc-feed-time">{new Date(e.createdAt).toLocaleTimeString()}</span>
-                  <span className={`cc-feed-msg ${ALERT_TONE[e.eventType] ?? "tone-info"}`}>
-                    <strong>{e.eventType.replace(/_/g, " ")}</strong>
-                    {e.actorUsername ? ` · actor ${e.actorUsername}` : ""}
-                    {e.subjectUsername ? ` · subject ${e.subjectUsername}` : ""}
-                    {e.riskScore != null ? ` · risk ${(e.riskScore as number).toFixed(2)}` : ""}
-                  </span>
-                </li>
-              ))}
+              {audit.slice(0, 12).map((e) => {
+                const tone = ALERT_TONE[e.eventType] ?? "tone-info";
+                const critical = CRITICAL_EVENTS.has(e.eventType);
+                return (
+                  <li key={e.id} className={`cc-feed-item ${critical ? "is-critical" : ""}`}>
+                    <span className="cc-feed-time">{new Date(e.createdAt).toLocaleTimeString()}</span>
+                    <span className={`cc-feed-msg ${tone}`}>
+                      <strong>{e.eventType.replace(/_/g, " ")}</strong>
+                      {e.actorUsername ? ` · actor ${e.actorUsername}` : ""}
+                      {e.subjectUsername ? ` · subject ${e.subjectUsername}` : ""}
+                      {e.riskScore != null ? ` · risk ${(e.riskScore as number).toFixed(2)}` : ""}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
 
-          <div className="cc-surface" style={{ padding: 12 }}>
-            <strong>Held messages</strong>
-            <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-              {held.length === 0 ? <div className="cc-empty">No messages currently held.</div> : null}
-              {held.map((h) => (
-                <div key={h.messageId} className="cc-result-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 4 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                    <strong>#{h.messageId}</strong>
-                    <button className="cc-btn cc-btn--ghost" onClick={() => void release(h.messageId)}>
-                      Release
-                    </button>
+          <div className="cc-soc__row cc-soc__row--two">
+            <div className="cc-soc__card">
+              <div className="cc-soc__card-title">Held messages</div>
+              <div className="cc-soc__list">
+                {held.length === 0 ? <div className="cc-empty">No messages currently held.</div> : null}
+                {held.map((h) => (
+                  <div key={h.messageId} className="cc-held">
+                    <div className="cc-held__head">
+                      <strong>#{h.messageId}</strong>
+                      <button className="cc-btn cc-btn--ghost" onClick={() => void release(h.messageId)}>
+                        Release
+                      </button>
+                    </div>
+                    <div className="cc-held__meta">
+                      <span>{h.senderUsername} → {h.receiverUsername}</span>
+                      <span>{h.enforcedMode ?? "—"} · {h.riskLevel ?? "—"}</span>
+                    </div>
+                    {h.holdReason ? <div className="cc-held__reason">{h.holdReason}</div> : null}
                   </div>
-                  <div style={{ color: "var(--cc-muted)", fontSize: 12 }}>
-                    {h.senderUsername} → {h.receiverUsername} · enforced: {h.enforcedMode ?? "?"} · risk: {h.riskLevel ?? "?"} · reason: {h.holdReason ?? "?"}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div className="cc-surface" style={{ padding: 12 }}>
-            <strong>Suspicious activity (users at risk)</strong>
-            <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-              {risk.length === 0 ? <div className="cc-empty">No flagged users.</div> : null}
-              {risk.map((r) => (
-                <div key={r.username} className="cc-result-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 4 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                    <strong>{r.username}</strong>
-                    <button className="cc-btn cc-btn--ghost" onClick={() => void reset(r.username)}>
-                      Reset failures
-                    </button>
+            <div className="cc-soc__card">
+              <div className="cc-soc__card-title">Users at risk</div>
+              <div className="cc-soc__list">
+                {risk.length === 0 ? <div className="cc-empty">No flagged users.</div> : null}
+                {risk.map((r) => (
+                  <div key={r.username} className="cc-held">
+                    <div className="cc-held__head">
+                      <strong>{r.username}</strong>
+                      <button className="cc-btn cc-btn--ghost" onClick={() => void reset(r.username)}>
+                        Reset
+                      </button>
+                    </div>
+                    <div className="cc-held__meta">
+                      <span>fail {r.consecutiveFailures} · total {r.puzzleFailures}/{r.puzzleAttempts}</span>
+                      <span>avg {Math.round(r.avgSolveTimeMs)}ms · rec {r.recoveryEvents}</span>
+                    </div>
                   </div>
-                  <div style={{ color: "var(--cc-muted)", fontSize: 12 }}>
-                    consecutive: {r.consecutiveFailures} · failures: {r.puzzleFailures} / attempts: {r.puzzleAttempts}
-                    · avg solve: {Math.round(r.avgSolveTimeMs)} ms · recoveries: {r.recoveryEvents}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="cc-surface" style={{ padding: 12 }}>
-            <strong>Audit log</strong>
-            <div style={{ marginTop: 8, maxHeight: 320, overflow: "auto", display: "grid", gap: 4 }}>
-              {audit.length === 0 ? <div className="cc-empty">No audit events.</div> : null}
-              {audit.map((e) => (
-                <div key={e.id} style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12 }}>
-                  <span style={{ color: "var(--cc-muted)" }}>{new Date(e.createdAt).toLocaleTimeString()}</span>{" "}
-                  <strong>{e.eventType}</strong>{" "}
-                  {e.actorUsername ? `actor=${e.actorUsername} ` : ""}
-                  {e.subjectUsername ? `subject=${e.subjectUsername}` : ""}
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -260,7 +236,7 @@ function buildNodes(held: HeldMessageView[], risk: UserAtRiskView[]): NetworkNod
   const nodes = new Map<string, NetworkNode>();
 
   held.forEach((h) => {
-    if (h.senderUsername) ensure(nodes, h.senderUsername).state = pickWorse(ensure(nodes, h.senderUsername).state, "stable");
+    if (h.senderUsername) ensure(nodes, h.senderUsername);
     if (h.receiverUsername) ensure(nodes, h.receiverUsername).state = "compromised";
   });
 
@@ -273,7 +249,6 @@ function buildNodes(held: HeldMessageView[], risk: UserAtRiskView[]): NetworkNod
     }
   });
 
-  // Limit to 12 nodes for the small visualization.
   return Array.from(nodes.values()).slice(0, 12);
 }
 
@@ -290,11 +265,6 @@ function ensure(map: Map<string, NetworkNode>, id: string): NetworkNode {
     map.set(id, n);
   }
   return n;
-}
-
-function pickWorse(a: NetworkNode["state"], b: NetworkNode["state"]): NetworkNode["state"] {
-  const order = { stable: 0, recovered: 1, compromised: 2 } as const;
-  return order[a] >= order[b] ? a : b;
 }
 
 function pickBetter(a: NetworkNode["state"], b: NetworkNode["state"]): NetworkNode["state"] {

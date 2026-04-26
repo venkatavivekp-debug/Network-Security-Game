@@ -608,9 +608,10 @@ body {
 
 /* ============================================================
    Cyber-game additions: puzzle UI, risk meter, network viz,
-   timeline, status pulses. The original page layouts are
-   untouched — these classes are opt-in.
+   timeline, SOC layout, status pulses.
    ============================================================ */
+
+/* ---------- PuzzleArena ---------- */
 
 .cc-puzzle {
   display: grid;
@@ -621,6 +622,7 @@ body {
   background: linear-gradient(180deg, rgba(7, 14, 26, 0.85), rgba(11, 17, 32, 0.6));
   position: relative;
   overflow: hidden;
+  transition: border-color 220ms ease, box-shadow 220ms ease;
 }
 
 .cc-puzzle::before {
@@ -630,6 +632,16 @@ body {
   background: radial-gradient(220px 120px at 18% 0%, rgba(100, 181, 255, 0.12), transparent 65%),
     radial-gradient(220px 140px at 82% 100%, rgba(61, 220, 151, 0.10), transparent 65%);
   pointer-events: none;
+}
+
+.cc-puzzle.is-success {
+  border-color: rgba(61, 220, 151, 0.45);
+  animation: cc-glow-success 700ms ease-out 1;
+}
+
+.cc-puzzle.is-failure {
+  border-color: rgba(255, 93, 108, 0.45);
+  animation: cc-shake-arena 420ms ease-in-out 1;
 }
 
 .cc-puzzle-header {
@@ -664,19 +676,16 @@ body {
   background: rgba(86, 204, 242, 0.18);
   border-color: rgba(86, 204, 242, 0.30);
 }
-
 .cc-puzzle-type-pill.is-arith {
   background: rgba(246, 196, 69, 0.18);
   border-color: rgba(246, 196, 69, 0.32);
   color: rgba(255, 232, 178, 0.95);
 }
-
 .cc-puzzle-type-pill.is-encoded {
   background: rgba(61, 220, 151, 0.18);
   border-color: rgba(61, 220, 151, 0.32);
   color: rgba(195, 245, 212, 0.95);
 }
-
 .cc-puzzle-type-pill.is-pattern {
   background: rgba(255, 142, 215, 0.18);
   border-color: rgba(255, 142, 215, 0.32);
@@ -734,6 +743,7 @@ body {
   background: rgba(123, 145, 189, 0.30);
   border: 1px solid rgba(123, 145, 189, 0.55);
   display: inline-block;
+  transition: background 200ms ease, box-shadow 200ms ease;
 }
 
 .cc-puzzle-dot.is-used {
@@ -764,6 +774,26 @@ body {
   border-color: rgba(255, 93, 108, 0.50);
   background: rgba(255, 93, 108, 0.12);
   animation: cc-pulse-warn 1s ease-in-out infinite;
+}
+
+.cc-puzzle-timerbar {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(123, 145, 189, 0.18);
+  overflow: hidden;
+  z-index: 1;
+}
+.cc-puzzle-timerbar > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--cc-stable), var(--cc-recovery));
+  transition: width 1s linear;
+}
+.cc-puzzle-timerbar.is-warn > span {
+  background: linear-gradient(90deg, var(--cc-recovery), #ffae5e);
+}
+.cc-puzzle-timerbar.is-crit > span {
+  background: linear-gradient(90deg, #ffae5e, var(--cc-attack));
 }
 
 .cc-puzzle-progress {
@@ -804,28 +834,26 @@ body {
   border-color: rgba(61, 220, 151, 0.45);
   background: rgba(61, 220, 151, 0.10);
   color: rgba(195, 245, 212, 0.95);
-  animation: cc-success-pulse 0.6s ease-out 1;
 }
 
 .cc-puzzle-banner.is-failure {
   border-color: rgba(255, 93, 108, 0.50);
   background: rgba(255, 93, 108, 0.10);
   color: rgba(255, 200, 210, 0.95);
-  animation: cc-fail-shake 0.45s ease-in-out 1;
 }
 
-@keyframes cc-success-pulse {
-  0% { transform: scale(0.97); box-shadow: 0 0 0 0 rgba(61, 220, 151, 0.30); }
-  60% { transform: scale(1.02); box-shadow: 0 0 0 12px rgba(61, 220, 151, 0); }
-  100% { transform: scale(1); }
+@keyframes cc-glow-success {
+  0%   { box-shadow: 0 0 0 0 rgba(61, 220, 151, 0.40); }
+  60%  { box-shadow: 0 0 0 14px rgba(61, 220, 151, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(61, 220, 151, 0); }
 }
 
-@keyframes cc-fail-shake {
+@keyframes cc-shake-arena {
   0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-6px); }
-  40% { transform: translateX(6px); }
-  60% { transform: translateX(-3px); }
-  80% { transform: translateX(3px); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
 }
 
 @keyframes cc-pulse-warn {
@@ -833,7 +861,8 @@ body {
   50% { box-shadow: 0 0 0 8px rgba(255, 93, 108, 0); }
 }
 
-/* Risk meter */
+/* ---------- RiskMeter ---------- */
+
 .cc-risk-meter {
   display: grid;
   gap: 6px;
@@ -855,8 +884,21 @@ body {
   position: absolute;
   inset: 0;
   width: 0%;
-  background: linear-gradient(90deg, var(--cc-stable), var(--cc-recovery), var(--cc-attack));
-  transition: width 200ms ease;
+  background: linear-gradient(90deg, var(--cc-stable), var(--cc-stable));
+  transition: width 320ms cubic-bezier(0.2, 0.8, 0.2, 1), background 320ms ease;
+}
+
+.cc-risk-meter.is-low .cc-risk-meter__fill {
+  background: linear-gradient(90deg, var(--cc-stable), var(--cc-stable));
+}
+.cc-risk-meter.is-watch .cc-risk-meter__fill {
+  background: linear-gradient(90deg, var(--cc-stable), var(--cc-recovery));
+}
+.cc-risk-meter.is-high .cc-risk-meter__fill {
+  background: linear-gradient(90deg, var(--cc-recovery), #ffae5e);
+}
+.cc-risk-meter.is-critical .cc-risk-meter__fill {
+  background: linear-gradient(90deg, #ffae5e, var(--cc-attack));
 }
 
 .cc-risk-meter__row {
@@ -880,7 +922,16 @@ body {
   color: var(--cc-ink);
 }
 
-/* Threat-level banner */
+.cc-risk-meter__caption {
+  color: var(--cc-muted);
+  font-size: 12px;
+  font-weight: 700;
+  margin-top: 2px;
+  letter-spacing: 0.02em;
+}
+
+/* ---------- ThreatBanner ---------- */
+
 .cc-threat-banner {
   display: flex;
   align-items: center;
@@ -909,7 +960,91 @@ body {
   animation: cc-pulse-warn 1.4s ease-in-out infinite;
 }
 
-/* Network visualization */
+.cc-threat-banner__body { display: grid; gap: 2px; }
+.cc-threat-banner__title { font-weight: 950; letter-spacing: 0.02em; }
+.cc-threat-banner__sub { color: var(--cc-muted); font-weight: 700; font-size: 12px; }
+.cc-threat-banner__pressure {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  font-size: 16px;
+}
+
+/* ---------- AttackTimeline ---------- */
+
+.cc-timeline {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  flex-wrap: wrap;
+  padding: 6px 0 2px;
+}
+
+.cc-timeline__step {
+  flex: 1 1 160px;
+  border-radius: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(123, 145, 189, 0.18);
+  background: rgba(7, 11, 18, 0.55);
+  display: grid;
+  gap: 4px;
+  transition: transform 200ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+
+.cc-timeline__step.is-attack { border-color: rgba(255, 93, 108, 0.32); }
+.cc-timeline__step.is-defense { border-color: rgba(86, 204, 242, 0.32); }
+.cc-timeline__step.is-recovery { border-color: rgba(246, 196, 69, 0.32); }
+
+.cc-timeline__step.is-active {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 2px rgba(100, 181, 255, 0.22), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.cc-timeline__step.is-active.is-attack {
+  box-shadow: 0 0 0 2px rgba(255, 93, 108, 0.32), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.cc-timeline__step.is-active.is-defense {
+  box-shadow: 0 0 0 2px rgba(86, 204, 242, 0.32), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.cc-timeline__step.is-active.is-recovery {
+  box-shadow: 0 0 0 2px rgba(246, 196, 69, 0.34), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.cc-timeline__phase {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cc-muted);
+  font-weight: 950;
+}
+
+.cc-timeline__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(123, 145, 189, 0.5);
+  display: inline-block;
+}
+.cc-timeline__step.is-attack .cc-timeline__dot { background: var(--cc-attack); }
+.cc-timeline__step.is-defense .cc-timeline__dot { background: var(--cc-accent-2); }
+.cc-timeline__step.is-recovery .cc-timeline__dot { background: var(--cc-stable); }
+
+.cc-timeline__step.is-active .cc-timeline__dot {
+  animation: cc-dot-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes cc-dot-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.7; }
+}
+
+.cc-timeline__title { font-weight: 900; }
+.cc-timeline__sub { color: var(--cc-muted); font-size: 12px; }
+
+/* ---------- NetworkViz ---------- */
+
 .cc-netviz {
   position: relative;
   width: 100%;
@@ -929,6 +1064,55 @@ body {
   display: block;
 }
 
+.cc-netviz--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cc-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cc-netviz__node circle.cc-netviz__core {
+  transition: fill 320ms ease;
+}
+.cc-netviz__node circle.cc-netviz__halo {
+  transition: fill 320ms ease, opacity 320ms ease;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+.cc-netviz__node.is-compromised circle.cc-netviz__halo {
+  animation: cc-node-pulse 1.6s ease-in-out infinite;
+}
+.cc-netviz__node.is-recovered circle.cc-netviz__halo {
+  animation: cc-node-recover 1.6s ease-out 1;
+}
+
+@keyframes cc-node-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+@keyframes cc-node-recover {
+  0%   { fill: rgba(255, 93, 108, 0.30); }
+  50%  { fill: rgba(246, 196, 69, 0.30); }
+  100% { fill: rgba(61, 220, 151, 0.18); }
+}
+
+.cc-netviz__edge {
+  stroke: rgba(123, 145, 189, 0.45);
+  stroke-width: 0.55;
+}
+.cc-netviz__edge.is-cut {
+  stroke: rgba(255, 93, 108, 0.6);
+  stroke-width: 0.9;
+  stroke-dasharray: 1.4 1.6;
+  animation: cc-edge-flow 4s linear infinite;
+}
+@keyframes cc-edge-flow {
+  to { stroke-dashoffset: -20; }
+}
+
 .cc-netviz__legend {
   position: absolute;
   bottom: 10px;
@@ -942,44 +1126,115 @@ body {
 }
 .cc-netviz__legend span { display: inline-flex; gap: 6px; align-items: center; }
 .cc-netviz__legend i {
-  width: 9px; height: 9px; border-radius: 50%; display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
 }
 
-/* Timeline */
-.cc-timeline {
-  display: flex;
+/* ---------- SOC layout ---------- */
+
+.cc-soc { display: grid; gap: 12px; }
+
+.cc-soc__row {
+  display: grid;
   gap: 12px;
-  align-items: stretch;
-  flex-wrap: wrap;
-  padding: 10px 0;
+}
+.cc-soc__row--two { grid-template-columns: 1fr 1fr; }
+@media (max-width: 900px) {
+  .cc-soc__row--two { grid-template-columns: 1fr; }
 }
 
-.cc-timeline__step {
-  flex: 1 1 160px;
-  border-radius: 14px;
-  padding: 10px 12px;
+.cc-soc__card {
+  border: 1px solid var(--cc-line);
+  border-radius: 16px;
+  background: rgba(7, 11, 18, 0.42);
+  padding: 12px 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.cc-soc__card-title {
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  font-size: 13px;
+  color: rgba(214, 237, 255, 0.92);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cc-soc__hint {
+  color: var(--cc-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.cc-soc__slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cc-soc__slider input[type="range"] {
+  flex: 1;
+  accent-color: var(--cc-accent);
+}
+.cc-soc__slider code {
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  background: rgba(7, 11, 18, 0.45);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--cc-line);
+}
+
+.cc-soc__pressure { display: grid; gap: 4px; }
+.cc-soc__pressure > div {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(123, 145, 189, 0.14);
+}
+.cc-soc__pressure > div span { color: var(--cc-muted); font-weight: 700; }
+.cc-soc__pressure > div strong { font-weight: 900; }
+
+.cc-soc__list { display: grid; gap: 8px; }
+
+.cc-held {
+  border-radius: 12px;
   border: 1px solid rgba(123, 145, 189, 0.18);
-  background: rgba(7, 11, 18, 0.55);
+  background: rgba(7, 11, 18, 0.42);
+  padding: 8px 10px;
   display: grid;
   gap: 4px;
 }
-
-.cc-timeline__step.is-attack { border-color: rgba(255, 93, 108, 0.32); }
-.cc-timeline__step.is-defense { border-color: rgba(86, 204, 242, 0.32); }
-.cc-timeline__step.is-recovery { border-color: rgba(246, 196, 69, 0.32); }
-.cc-timeline__step.is-active { box-shadow: 0 0 0 2px rgba(100, 181, 255, 0.20); }
-
-.cc-timeline__phase {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.cc-held__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.cc-held__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
   color: var(--cc-muted);
-  font-weight: 950;
+  font-size: 12px;
+  font-weight: 650;
+}
+.cc-held__reason {
+  font-size: 12px;
+  color: rgba(255, 200, 210, 0.92);
 }
 
-.cc-timeline__title { font-weight: 900; }
-
-.cc-timeline__sub { color: var(--cc-muted); font-size: 12px; }
+/* Critical feed item */
+.cc-feed-item.is-critical {
+  border-color: rgba(255, 93, 108, 0.40);
+  background: rgba(255, 93, 108, 0.06);
+}
 
 /* SOC alert pulse */
 .cc-pulse-dot {
@@ -991,5 +1246,28 @@ body {
   margin-right: 6px;
   box-shadow: 0 0 0 0 rgba(255, 93, 108, 0.5);
   animation: cc-pulse-warn 1.6s infinite;
+}
+
+/* ---------- Reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-puzzle.is-success,
+  .cc-puzzle.is-failure,
+  .cc-pulse-dot,
+  .cc-puzzle-timer.is-crit,
+  .cc-threat-banner.is-critical,
+  .cc-netviz__node.is-compromised circle.cc-netviz__halo,
+  .cc-netviz__edge.is-cut,
+  .cc-timeline__step.is-active .cc-timeline__dot {
+    animation: none !important;
+  }
+  .cc-risk-meter__fill,
+  .cc-puzzle-timerbar > span,
+  .cc-timeline__step,
+  .cc-puzzle-progress > span,
+  .cc-puzzle-dot,
+  .cc-puzzle {
+    transition: none !important;
+  }
 }
 

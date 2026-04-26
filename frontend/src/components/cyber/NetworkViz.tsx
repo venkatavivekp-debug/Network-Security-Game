@@ -25,7 +25,7 @@ const COLORS: Record<NetworkNode["state"], string> = {
 
 const HALO: Record<NetworkNode["state"], string> = {
   stable: "rgba(86, 204, 242, 0.18)",
-  compromised: "rgba(255, 93, 108, 0.20)",
+  compromised: "rgba(255, 93, 108, 0.22)",
   recovered: "rgba(61, 220, 151, 0.18)",
 };
 
@@ -52,25 +52,41 @@ export function NetworkViz({
       .filter((x): x is { a: PositionedNode; b: PositionedNode; cut: boolean } => x != null);
   }, [edges, positioned]);
 
+  if (nodes.length === 0) {
+    return (
+      <div className="cc-netviz cc-netviz--empty" style={{ height }}>
+        <span>No active sessions in the SOC view.</span>
+      </div>
+    );
+  }
+
   return (
     <div className="cc-netviz" style={{ height }}>
       <svg viewBox="0 0 200 120" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <radialGradient id="cc-netviz-bg" cx="50%" cy="50%" r="60%">
+            <stop offset="0%" stopColor="rgba(100, 181, 255, 0.08)" />
+            <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+          </radialGradient>
+        </defs>
+        <rect x="0" y="0" width="200" height="120" fill="url(#cc-netviz-bg)" />
+
         {edgeLines.map((e, i) => (
           <line
             key={`e-${i}`}
+            className={`cc-netviz__edge ${e.cut ? "is-cut" : ""}`}
             x1={e.a.x}
             y1={e.a.y}
             x2={e.b.x}
             y2={e.b.y}
-            stroke={e.cut ? "rgba(255, 93, 108, 0.55)" : "rgba(123, 145, 189, 0.45)"}
-            strokeWidth={e.cut ? 0.9 : 0.55}
-            strokeDasharray={e.cut ? "1.4 1.4" : undefined}
           />
         ))}
+
         {positioned.map((n) => (
-          <g key={n.id}>
-            <circle cx={n.x} cy={n.y} r={6.4} fill={HALO[n.state]} />
+          <g key={n.id} className={`cc-netviz__node is-${n.state}`}>
+            <circle className="cc-netviz__halo" cx={n.x} cy={n.y} r={6.6} fill={HALO[n.state]} />
             <circle
+              className="cc-netviz__core"
               cx={n.x}
               cy={n.y}
               r={3.2}
@@ -80,7 +96,7 @@ export function NetworkViz({
             />
             <text
               x={n.x}
-              y={n.y + 9.2}
+              y={n.y + 9.4}
               textAnchor="middle"
               fontSize="3.3"
               fill="rgba(214, 237, 255, 0.85)"
