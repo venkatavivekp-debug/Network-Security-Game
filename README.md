@@ -129,13 +129,31 @@ Receivers are informed safely via message metadata fields:
 
 ### Admin supervision layer (no plaintext access)
 Admins can:
-- view risk status
-- view recent audit events
-- set threat level
-- place/release messages on hold
-- lock/unlock users
+- view risk status (`POST /admin/risk-score`)
+- view users currently flagged by the behaviour engine (`GET /admin/users-at-risk`)
+- view messages held by the system (`GET /admin/held-messages`)
+- view recent audit events (`GET /admin/audit/recent`)
+- set the global threat level (`GET/POST /admin/threat-level`)
+- place/release messages on hold (`POST /admin/hold-message`, `POST /admin/release-message`)
+- lock/unlock users (`POST /admin/lock-user`, `POST /admin/unlock-user`)
+- reset puzzle-failure counters after review (`POST /admin/reset-failures`)
 
-Admins **cannot** decrypt messages, retrieve plaintext, or bypass cryptographic gating.
+Admins **cannot** decrypt messages, retrieve plaintext, or bypass cryptographic gating. The held-messages endpoint deliberately returns metadata only (sender, receiver, mode, risk, hold reason, recovery state) — never ciphertext or plaintext. There is a unit test in `AdminControllerTest` that asserts this property.
+
+### Per-user behaviour profile and recovery state machine
+Two pieces sit between "the user did something" and "the engine reacts":
+
+1. **`UserBehaviorProfile`** (`user_behavior_profiles` table) records, per user, puzzle attempts, successes, failures, consecutive recent failures, average solve time and recovery events. Successive failures push the burst counter up; quiet periods decay it. Successful solves shrink the burst and update the moving-average solve time. Admin "reset failures" or release-from-hold both record an explicit recovery event so the audit trail has the full story.
+2. **`RecoveryState`** is reported on every locked or held message so the UI and admin can reason about state without seeing plaintext. The states are `NORMAL`, `CHALLENGE_REQUIRED`, `ESCALATED`, `HELD`, `ADMIN_REVIEW_REQUIRED`, `RECOVERY_IN_PROGRESS`, `RECOVERED`, `FAILED`. There is no dead-end: every blocked state has a path back via puzzle solve, admin release, or counter reset.
+
+Send-message responses now include `riskScore`, `riskLevel`, `riskReasons`, `recoveryState`, `adminReviewRequired`, and a human-readable `warningMessage`. Inbox summaries include the same fields so the receiver UI can show risk badges, recovery hints, and a puzzle-solve panel without ever pulling plaintext.
+
+### Frontend cybersecurity console
+The React frontend ships three role-aware consoles on top of the existing simulation/evaluation pages:
+
+- **Sender Command Console** (`/messaging`, SENDER role) — pick mode `NORMAL`/`SHCS`/`CPHS`, see the requested vs enforced mode, the risk badge, the recovery state, and the human warning message in the response card.
+- **Receiver Challenge Console** (`/messaging`, RECEIVER role) — inbox with risk and recovery badges per message, a CPHS puzzle solver that runs SHA-256 in the browser through the allowed `maxIterations`, attempt counters, expiry hint, and a Decrypt button gated on the puzzle being solved.
+- **Admin SOC** (`/admin`, ADMIN role) — global threat-level slider, held-messages list with one-click release, users-at-risk list with reset action, and a live recent audit feed. Plaintext is never fetched.
 
 ## Experimental Evaluation (research validation)
 This upgrade adds a **research-grade evaluation harness** that turns the platform into an experimental validation system.
@@ -188,6 +206,8 @@ Response `data` object:
 - `insights` — bullet-style strings derived from those numbers
 - `bestMode` — mode name that ranks first on compromise (then resilience, then effort)
 - `recommendedModeByThreatLevel` — best mode name per band from the extra runs
+- `puzzleFailureEscalationRate` — `puzzleFailures / puzzleAttempts` over the last 200 audit events; `null` when the system has not seen any puzzle attempts yet
+- `adminReviewRate` — `(hold + release admin actions) / messageSends` over the same window; `null` when no messages have been sent
 
 ## Research Alignment and Experimental Findings
 
