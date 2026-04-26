@@ -13,17 +13,21 @@ const TYPE_PILL_CLASS: Record<PuzzleType, string> = {
 };
 
 const TYPE_LABEL: Record<PuzzleType, string> = {
-  POW_SHA256: "HASH PUZZLE",
-  ARITHMETIC: "ARITHMETIC",
-  ENCODED: "ENCODED MESSAGE",
-  PATTERN: "PATTERN MATCH",
+  POW_SHA256: "SECURITY CHALLENGE · HASH PROOF",
+  ARITHMETIC: "SECURITY CHALLENGE · ARITHMETIC",
+  ENCODED: "SECURITY CHALLENGE · ENCODED MESSAGE",
+  PATTERN: "SECURITY CHALLENGE · PATTERN MATCH",
 };
 
 const TYPE_TAGLINE: Record<PuzzleType, string> = {
-  POW_SHA256: "Find a nonce so SHA-256(challenge:nonce) matches the target hash.",
-  ARITHMETIC: "Evaluate the math expression and submit the integer.",
-  ENCODED: "Decode the base64 phrase and submit the original text.",
-  PATTERN: "Continue the sequence — return the next value.",
+  POW_SHA256:
+    "Hash proof: search a small nonce so SHA-256(challenge:nonce) equals the target. Demonstrates CPHS gating; not a hardness claim.",
+  ARITHMETIC:
+    "Arithmetic gate: evaluate the expression with operator precedence and submit the integer.",
+  ENCODED:
+    "Encoded gate: decode the base64 phrase and submit the original text. Pedagogical, not crypt-hard.",
+  PATTERN:
+    "Pattern gate: continue the numeric sequence (arithmetic, geometric, or Fibonacci-style) and submit the next value.",
 };
 
 export function PuzzleArena({
@@ -167,9 +171,9 @@ export function PuzzleArena({
   const arenaClass = `cc-puzzle ${outcome === "success" ? "is-success" : ""} ${outcome === "failure" ? "is-failure" : ""}`;
 
   return (
-    <div className={arenaClass} aria-label={`Cryptographic puzzle: ${headerLabel}`}>
+    <div className={arenaClass} aria-label={`Security challenge: ${headerLabel}`}>
       <div className="cc-puzzle-header">
-        <div className="cc-puzzle-title">Cryptographic challenge</div>
+        <div className="cc-puzzle-title">Security challenge</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span className={`cc-puzzle-type-pill ${pillClass}`}>{headerLabel}</span>
           {expiryPill}
@@ -186,6 +190,9 @@ export function PuzzleArena({
       ) : null}
 
       <div className="cc-puzzle-question">{challenge.question || tagline}</div>
+      <div className="cc-puzzle-tagline" style={{ fontSize: 12, color: "var(--cc-muted)", marginTop: -2 }}>
+        {tagline}
+      </div>
 
       {challenge.puzzleType === "POW_SHA256" ? (
         <>

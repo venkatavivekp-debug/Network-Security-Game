@@ -67,9 +67,13 @@ boilerplate.
     with a 30-minute idle timeout.
   - Logout invalidates the HTTP session and clears `NSG_SESSION` /
     `JSESSIONID` cookies. A JSON `POST /auth/logout` is also exposed.
-  - A small `ConnectionSecurityService` evaluates session/device consistency
-    against the last-seen fingerprint and emits a `SESSION_ANOMALY` audit
-    event when the fingerprint changes mid-session.
+  - `ConnectionSecurityService` keeps a layered, hashed fingerprint per user
+    (IP, User-Agent, Accept-Language, session ID, plus first/last-seen
+    timestamps and an anomaly counter). It emits one of four states per
+    request — `FIRST_SEEN`, `STABLE`, `SHIFTED` (one signal changed),
+    `ANOMALOUS` (multiple shifts or repeated drift). Anomalous states are
+    audited as `SESSION_ANOMALY` and fed into the adaptive engine; users
+    are never auto-blocked from this signal alone.
 
 - **Adaptive verification (defense in depth, not lockout)**
   - Risk-based step-up: elevated risk requires SHCS/CPHS; critical risk
@@ -108,16 +112,106 @@ boilerplate.
     `include-message=never`, `include-exception=false`. The frontend renders
     the JSON `ApiErrorResponse.details` array, not raw stack traces.
 
+## 4a. Connection security model
+
+The fingerprint is **opaque** (each signal is hashed) and **decoupled from
+key derivation**, so a network move does not break decryption. It is used
+as adaptive risk input and audit signal only.
+
+| Signal | Source | Stored as |
+|---|---|---|
+| IP | `X-Forwarded-For` / `RemoteAddr` | SHA-256 hash |
+| User-Agent | request header | SHA-256 hash |
+| Accept-Language | request header | SHA-256 hash (optional) |
+| Session ID | servlet `HttpSession` | SHA-256 hash |
+| `firstSeen` / `lastSeen` | server clock | timestamps |
+| `anomalyCount` | derived | integer |
+
+| State | Trigger | Effect |
+|---|---|---|
+| `FIRST_SEEN` | first request for the user | seeded only, no risk added |
+| `STABLE` | all signals match | no extra risk |
+| `SHIFTED` | exactly one signal changed | small adaptive bump, audit |
+| `ANOMALOUS` | multiple signals changed or repeated shifts | `SESSION_ANOMALY` audit; adaptive engine may step `NORMAL → SHCS` |
+
+## 4b. Admin step-up protection
+
+Admin role alone is not enough for sensitive actions. After login, the
+admin must additionally **confirm their password** to mint a 5-minute
+step-up token. The token is required for:
+
+- `POST /admin/hold-message`, `POST /admin/release-message`
+- `POST /admin/reset-failures`, `POST /admin/lock-user`, `POST /admin/unlock-user`
+- `POST /admin/threat-level`
+
+Read-only dashboards (`GET /admin/held-messages`, `GET /admin/audit/*`,
+`GET /admin/users-at-risk`, `GET /admin/recovery-policy`,
+`GET /admin/system-pressure`, `GET /admin/risk-policy`) **do not** require
+step-up.
+
+API:
+
+```
+POST /admin/confirm-action     { "password": "..." }   → { token, expiresAt, ttlSeconds }
+GET  /admin/confirmation-status                        → { active, expiresAt, ttlSeconds }
+```
+
+The token is presented on subsequent calls via the `X-Admin-Confirm` header.
+The frontend opens a small password modal automatically when a sensitive
+action returns `403 Admin step-up required`, and retries the action after
+confirmation. Plaintext passwords are never echoed back.
+
+## 4c. Rate limiting deployment note
+
+Rate limiting is split into a **service** (`RateLimiterService`) and a
+**backend** (`RateLimiterBackend` interface).
+
+| Profile | Backend | Notes |
+|---|---|---|
+| local / dev | `InMemoryRateLimiterBackend` (default, `@Primary`) | per-process token buckets, no setup |
+| production | swap to a shared store (e.g. Redis) | implement `RateLimiterBackend` and register it as a Spring bean; `app.ratelimit.backend=memory` switches the in-memory one off |
+
+Behaviour at the edge does not change — the same `429` response, the same
+`Retry-After` header, and the same `RATE_LIMIT_BLOCKED` audit event are
+emitted regardless of backend.
+
+## 4d. Adaptive policy (rule table, not a solver)
+
+`AdaptiveRiskPolicyService` exposes the rule table at `GET /admin/risk-policy`
+so the SOC console can render exact thresholds, weights, and limitations.
+
+| Risk level | Score range | Action |
+|---|---|---|
+| `LOW` | `< low` | enforce requested mode |
+| `ELEVATED` | `[low, high)` | step `NORMAL → SHCS`, keep `SHCS`/`CPHS` as requested |
+| `HIGH` | `[high, critical)` | enforce `CPHS`, harder puzzle |
+| `CRITICAL` | `≥ critical` | enforce `CPHS` and `HOLD` for admin review |
+
+Risk score `= clamp(Σ wᵢ · signalᵢ, 0, 1)` where `signalᵢ` is the live value
+of `pressure`, `consecutive_failures`, `failure_rate`,
+`unstable_solve_time`, `fingerprint_changed`, `connection_shifted`,
+`connection_anomalous`, etc. Exact weights and thresholds live in
+`application.yml` under `app.adaptive.*` and are echoed by the
+`/admin/risk-policy` endpoint. This is a **transparent heuristic**, not an
+SPE/Nash solver.
+
 ## 5. Puzzle system (CPHS)
+
+The puzzle layer **demonstrates CPHS gating and adaptive challenge cost**.
+It is intentionally pedagogical — not a hardness claim. The frontend
+labels all four types as *security challenges* for clarity.
 
 Each puzzle is bound to a `(message, receiver, generated-at)` tuple,
 non-replayable, attempt-limited, and time-bounded.
 
-- **Hash puzzle (POW)** — find a nonce so `SHA-256(challenge:nonce)` matches
-  a target.
-- **Arithmetic** — evaluate a generated expression.
-- **Encoded** — base64 / simple cipher decode.
-- **Pattern** — continue an arithmetic / geometric / Fibonacci-like sequence.
+- **Hash proof (POW)** — find a nonce so `SHA-256(challenge:nonce)` matches
+  a target. Difficulty (max iterations) scales with adaptive risk.
+- **Arithmetic** — evaluate a small expression with operator precedence;
+  submit the integer.
+- **Encoded** — base64-encoded short phrase; submit the original text
+  (case-insensitive).
+- **Pattern** — continue a numeric sequence (arithmetic, geometric, or
+  Fibonacci-like) and submit the next value.
 
 A correct answer derives the wrapping key. A wrong answer is recorded but
 never leaks anything about the plaintext.
@@ -248,21 +342,48 @@ The React frontend is themed as a dark cyber command center:
 - **Battlefield simulation** — animated attack/defense/recovery loop with
   live KPIs and a system-pressure tile bound to the backend.
 
-## 11. Limitations (honest)
+## 11. Production hardening recommendations
+
+If you wanted to take this beyond a research sandbox:
+
+- Run behind TLS-terminating reverse proxy and enable `Secure` cookies
+  (the docker profile already does).
+- Replace `InMemoryRateLimiterBackend` with a Redis (or equivalent shared)
+  backend so per-process buckets become per-cluster buckets.
+- Move audit events into an append-only sink (Loki, OpenSearch, S3) and
+  retain the database table only as a hot cache.
+- Add a real second factor (TOTP/WebAuthn) for admin step-up; the current
+  password re-check is the minimum bar, not the ceiling.
+- Rotate `APP_CRYPTO_MASTER_KEY` / `APP_CRYPTO_SHCS_KEY` on a schedule
+  and re-encrypt rows with a background job (the schema is intentionally
+  re-encryptable; there is no wrap-around decrypt path).
+- Front the API with a WAF for L7 abuse, and feed `RATE_LIMIT_BLOCKED` /
+  `SESSION_ANOMALY` audit events into your SIEM.
+
+## 12. Limitations (honest)
 
 - Puzzle types are intentionally **simplified** (POW, simple arithmetic,
-  base64, basic sequences). They illustrate the gating mechanism, not
-  full hardness arguments.
-- The adaptive policy is **heuristic** — buckets of risk + threat level.
-  There is no SPE / Nash solver behind it.
+  base64, basic sequences). They illustrate CPHS gating and adaptive
+  challenge cost — they are **not** a hardness argument and the project
+  does not claim cryptographic puzzle hardness.
+- The adaptive policy is a **transparent heuristic** — weighted signals
+  + thresholds, exposed at `/admin/risk-policy`. There is no SPE / Nash
+  solver behind it.
 - The simulator is **abstracted**: graph attacks, budgets, and "user
   effort" are proxies. Good for relative comparisons inside the project,
   weak for absolute claims.
 - "Static / Layered / Challenge / Adaptive" labels are mapping conventions
   for exposition, not citations of specific external systems.
-- The connection security check uses an IP+User-Agent fingerprint as a
-  weak signal; it is intentionally not bound into key derivation, so it
-  can flag suspicious sessions without breaking the messaging flow when
-  someone simply moves networks.
+- The connection fingerprint is a **layered but still soft** signal
+  (hashed IP + User-Agent + Accept-Language + session ID). It is
+  intentionally not bound into key derivation, so it can flag suspicious
+  sessions without breaking the messaging flow when someone simply moves
+  networks. NAT, browser updates, and travel can produce `SHIFTED` /
+  `ANOMALOUS` states without an actual attacker.
+- Admin step-up is a password re-check token (5-minute TTL). It is a
+  meaningful uplift over role-only protection, but it is not WebAuthn /
+  hardware-key strength.
+- Rate limiting in the default profile is **per-process**, so a horizontally
+  scaled deployment must wire in a shared backend (see §4c).
 - Results above are one reproducible scenario, not a benchmark suite;
   different seeds, sizes, or strategies can shift which mode "wins".

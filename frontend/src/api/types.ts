@@ -74,12 +74,40 @@ export interface MessageSendResponse {
   recoverySummary: string | null;
   recoveryNextSteps: string[] | null;
   connectionSecurityState: ConnectionSecurityState | null;
+  connectionShiftedSignals: string[] | null;
   warningMessage: string | null;
   createdAt: string;
   status: string;
 }
 
-export type ConnectionSecurityState = "STABLE" | "FIRST_SEEN" | "ANOMALOUS";
+export type ConnectionSecurityState = "STABLE" | "FIRST_SEEN" | "SHIFTED" | "ANOMALOUS";
+
+export interface AdminConfirmationStatus {
+  active: boolean;
+  expiresAt?: string | null;
+  ttlSeconds?: number;
+}
+
+export interface AdminRiskPolicySignal {
+  name: string;
+  description: string;
+  weight?: number | string;
+}
+
+export interface AdminRiskPolicyLevelAction {
+  level: RiskLevel;
+  action: string;
+}
+
+export interface AdminRiskPolicyResponse {
+  model: string;
+  description: string;
+  thresholds: Record<string, number>;
+  signals: AdminRiskPolicySignal[];
+  levelActions: AdminRiskPolicyLevelAction[];
+  connectionStateContribution: Record<string, string>;
+  limitations: string[];
+}
 
 export interface MessageSummaryResponse {
   id: number;

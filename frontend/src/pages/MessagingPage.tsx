@@ -140,32 +140,96 @@ function StateBadge({ state }: { state: RecoveryState | null }) {
   );
 }
 
-const CONNECTION_TONE: Record<ConnectionSecurityState, { label: string; bg: string; ink: string }> = {
-  STABLE: { label: "Stable session", bg: "rgba(61, 220, 151, 0.18)", ink: "rgba(187, 246, 215, 0.95)" },
-  FIRST_SEEN: { label: "New device", bg: "rgba(100, 181, 255, 0.18)", ink: "rgba(196, 226, 255, 0.95)" },
-  ANOMALOUS: { label: "Suspicious session", bg: "rgba(255, 93, 108, 0.20)", ink: "rgba(255, 200, 210, 0.95)" },
+const CONNECTION_TONE: Record<ConnectionSecurityState, { label: string; cls: string; tooltip: string }> = {
+  STABLE: {
+    label: "Stable session",
+    cls: "cc-chip cc-chip--connection-stable",
+    tooltip:
+      "Network signals match the last known fingerprint for this account. No additional risk added.",
+  },
+  FIRST_SEEN: {
+    label: "New device",
+    cls: "cc-chip cc-chip--connection-first-seen",
+    tooltip:
+      "First time we have seen this combination of network/device signals for this account. Audit-only.",
+  },
+  SHIFTED: {
+    label: "Shifted session",
+    cls: "cc-chip cc-chip--connection-shifted",
+    tooltip:
+      "One network/device signal changed since the last request. Treated as a soft adaptive input, not a block.",
+  },
+  ANOMALOUS: {
+    label: "Suspicious session",
+    cls: "cc-chip cc-chip--connection-anomalous",
+    tooltip:
+      "Multiple signals changed or shifts repeated. The adaptive engine may step the protection mode up. Action is audited but not auto-blocked.",
+  },
 };
 
 function ConnectionBadge({ state }: { state: ConnectionSecurityState | null }) {
   if (!state) return null;
   const tone = CONNECTION_TONE[state];
   return (
-    <span
-      title={`Connection security: ${state}`}
-      style={{
-        display: "inline-flex",
-        padding: "2px 10px",
-        borderRadius: 999,
-        background: tone.bg,
-        color: tone.ink,
-        fontSize: 12,
-        fontWeight: 800,
-        letterSpacing: "0.06em",
-        textTransform: "uppercase",
-      }}
-    >
+    <span title={tone.tooltip} className={tone.cls}>
       {tone.label}
     </span>
+  );
+}
+
+const RISK_REASON_LABELS: Record<string, string> = {
+  pressure: "System pressure high",
+  threat_level_high: "Admin raised threat level",
+  consecutive_failures: "Recent puzzle failures",
+  failure_rate: "High failure rate",
+  unstable_solve_time: "Inconsistent solve time",
+  fingerprint_changed: "Device fingerprint changed",
+  ip_changed: "Source IP changed",
+  user_agent_changed: "User agent changed",
+  connection_shifted: "Connection signals shifted",
+  connection_anomalous: "Connection looks anomalous",
+  step_up_connection_anomalous: "Mode stepped up: anomalous connection",
+};
+
+function RiskReasonChips({ reasons }: { reasons: string[] | null | undefined }) {
+  if (!reasons || reasons.length === 0) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {reasons.map((r) => (
+        <span key={r} className="cc-chip cc-chip--risk" title={r}>
+          {RISK_REASON_LABELS[r] ?? r.replace(/_/g, " ")}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function RecoveryCard({
+  state,
+  summary,
+  steps,
+}: {
+  state: RecoveryState | null;
+  summary: string | null;
+  steps: string[] | null;
+}) {
+  const isBlocking =
+    state === "HELD" || state === "ADMIN_REVIEW_REQUIRED" || state === "RECOVERY_IN_PROGRESS" || state === "FAILED";
+  if (!isBlocking) return null;
+  return (
+    <div className="cc-recovery-card" role="region" aria-label="Recovery path">
+      <div className="cc-recovery-card__head">Recovery path</div>
+      {summary ? <div className="cc-recovery-card__summary">{summary}</div> : null}
+      {steps && steps.length ? (
+        <ol className="cc-recovery-card__steps">
+          {steps.map((s, i) => (
+            <li key={i}>{s}</li>
+          ))}
+        </ol>
+      ) : (
+        <div className="cc-recovery-card__steps">Wait for an admin to review and release this message.</div>
+      )}
+    </div>
   );
 }
 
@@ -318,12 +382,19 @@ function SendPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: stri
             </div>
           ) : null}
           {last.warningMessage ? <div className="cc-notice">{last.warningMessage}</div> : null}
-          {last.riskReasons && last.riskReasons.length ? (
+          <RiskReasonChips reasons={last.riskReasons} />
+          {last.connectionShiftedSignals && last.connectionShiftedSignals.length ? (
             <div style={{ fontSize: 12, color: "var(--cc-muted)" }}>
-              <strong style={{ color: "var(--cc-ink)" }}>Risk signals:</strong> {last.riskReasons.join(" · ")}
+              <strong style={{ color: "var(--cc-ink)" }}>Shifted signals:</strong>{" "}
+              {last.connectionShiftedSignals.join(" · ")}
             </div>
           ) : null}
           <RecoveryPlan summary={last.recoverySummary ?? null} steps={last.recoveryNextSteps ?? null} />
+          <RecoveryCard
+            state={last.recoveryState}
+            summary={last.recoverySummary ?? null}
+            steps={last.recoveryNextSteps ?? null}
+          />
         </div>
       ) : null}
     </div>
@@ -510,6 +581,12 @@ function InboxPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: str
               <AttackTimeline steps={timelineFor(selected.recoveryState)} />
 
               <RecoveryPlan
+                summary={selected.recoverySummary ?? (selected.recoveryState ? RECOVERY_COPY[selected.recoveryState] : null)}
+                steps={selected.recoveryNextSteps ?? null}
+              />
+
+              <RecoveryCard
+                state={selected.recoveryState}
                 summary={selected.recoverySummary ?? (selected.recoveryState ? RECOVERY_COPY[selected.recoveryState] : null)}
                 steps={selected.recoveryNextSteps ?? null}
               />

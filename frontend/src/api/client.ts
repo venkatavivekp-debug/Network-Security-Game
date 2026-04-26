@@ -12,6 +12,17 @@ export class ApiError extends Error {
     this.details = details;
     this.path = path;
   }
+
+  /**
+   * Heuristic: a 403 with the step-up message (or path under /admin/) means
+   * the admin needs to confirm their password before the action will succeed.
+   * The frontend uses this to show the step-up modal and retry.
+   */
+  isAdminStepUpRequired(): boolean {
+    if (this.status !== 403) return false;
+    const msg = (this.message || "").toLowerCase();
+    return msg.includes("step-up") || msg.includes("admin step");
+  }
 }
 
 async function parseJsonSafe(res: Response): Promise<unknown> {
@@ -24,13 +35,32 @@ async function parseJsonSafe(res: Response): Promise<unknown> {
   }
 }
 
+let stepUpToken: string | null = null;
+
+export const adminStepUp = {
+  set(token: string | null) {
+    stepUpToken = token && token.length > 0 ? token : null;
+  },
+  get(): string | null {
+    return stepUpToken;
+  },
+  clear() {
+    stepUpToken = null;
+  },
+};
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+  if (stepUpToken && path.startsWith("/admin/")) {
+    headers["X-Admin-Confirm"] = stepUpToken;
+  }
+
   const res = await fetch(path, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
+    headers,
     credentials: "include",
   });
 

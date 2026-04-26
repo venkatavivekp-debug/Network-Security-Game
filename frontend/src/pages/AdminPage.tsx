@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { adminApi } from "../api/admin";
-import { ApiError } from "../api/client";
+import { ApiError, adminStepUp } from "../api/client";
 import type {
+  AdminConfirmationStatus,
   AuditEventView,
   HeldMessageView,
   RecoveryPolicyEntry,
@@ -11,6 +12,8 @@ import type {
 import { useAuth } from "../state/auth/AuthProvider";
 import { ThreatBanner } from "../components/cyber/ThreatBanner";
 import { NetworkViz, type NetworkEdge, type NetworkNode } from "../components/cyber/NetworkViz";
+import { AdminStepUpModal } from "../components/cyber/AdminStepUpModal";
+import { RiskPolicyPanel } from "../components/cyber/RiskPolicyPanel";
 
 const ALERT_TONE: Record<string, string> = {
   ADAPTIVE_ESCALATION: "tone-attack",
@@ -49,6 +52,9 @@ export function AdminPage() {
   const [pressure, setPressure] = useState<SystemPressureResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<AdminConfirmationStatus | null>(null);
+  const [stepUp, setStepUp] = useState<{ open: boolean; reason?: string }>({ open: false });
+  const pendingActionRef = useRef<null | (() => Promise<void>)>(null);
 
   const isAdmin = user?.role === "ADMIN";
 
@@ -56,7 +62,7 @@ export function AdminPage() {
     setBusy(true);
     setNotice(null);
     try {
-      const [h, u, a, t, p, s, rp] = await Promise.all([
+      const [h, u, a, t, p, s, rp, cs] = await Promise.all([
         adminApi.heldMessages(),
         adminApi.usersAtRisk(),
         adminApi.recentAudit(),
@@ -64,6 +70,7 @@ export function AdminPage() {
         adminApi.systemPressure().catch(() => null),
         adminApi.suspiciousSessions().catch(() => [] as AuditEventView[]),
         adminApi.recoveryPolicy().catch(() => [] as RecoveryPolicyEntry[]),
+        adminApi.confirmationStatus().catch(() => null),
       ]);
       setHeld(h);
       setRisk(u);
@@ -72,10 +79,29 @@ export function AdminPage() {
       setPressure(p);
       setSuspicious(s.slice(0, 12));
       setRecoveryPolicy(rp);
+      setConfirmation(cs);
+      if (!cs?.active) adminStepUp.clear();
     } catch (err) {
       setNotice(err instanceof ApiError ? err.message : "Could not load admin data.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  /**
+   * Run a sensitive admin action. If the backend reports that step-up is
+   * required, open the modal, remember the action, and retry on confirmation.
+   */
+  async function runWithStepUp(reason: string, action: () => Promise<void>) {
+    try {
+      await action();
+    } catch (err) {
+      if (err instanceof ApiError && err.isAdminStepUpRequired()) {
+        pendingActionRef.current = action;
+        setStepUp({ open: true, reason });
+        return;
+      }
+      setNotice(err instanceof ApiError ? err.message : "Action failed.");
     }
   }
 
@@ -97,43 +123,70 @@ export function AdminPage() {
   }
 
   async function release(messageId: number) {
-    try {
+    await runWithStepUp(`Release held message #${messageId}`, async () => {
       await adminApi.release(messageId);
       setNotice(`Message #${messageId} released.`);
       await refresh();
-    } catch (err) {
-      setNotice(err instanceof ApiError ? err.message : "Release failed.");
-    }
+    });
   }
 
   async function reset(username: string) {
-    try {
+    await runWithStepUp(`Reset failure counters for ${username}`, async () => {
       await adminApi.resetFailures(username);
       setNotice(`Failure counters reset for ${username}.`);
       await refresh();
-    } catch (err) {
-      setNotice(err instanceof ApiError ? err.message : "Reset failed.");
-    }
+    });
   }
 
   async function setThreat(value: number) {
-    try {
+    await runWithStepUp(`Change global threat level to ${value.toFixed(2)}`, async () => {
       await adminApi.setThreatLevel(value);
       setIntensity(value);
-    } catch (err) {
-      setNotice(err instanceof ApiError ? err.message : "Threat level update failed.");
+    });
+  }
+
+  async function onStepUpConfirmed() {
+    setStepUp({ open: false });
+    setNotice("Admin step-up confirmed. Retrying action…");
+    const pending = pendingActionRef.current;
+    pendingActionRef.current = null;
+    if (pending) {
+      try {
+        await pending();
+      } catch (err) {
+        setNotice(err instanceof ApiError ? err.message : "Action failed after confirmation.");
+      }
     }
+    await refresh();
   }
 
   return (
     <div className="cc-page">
       <ThreatBanner snapshot={pressure} />
+      <AdminStepUpModal
+        open={stepUp.open}
+        reason={stepUp.reason}
+        onClose={() => setStepUp({ open: false })}
+        onConfirmed={() => void onStepUpConfirmed()}
+      />
       <section className="cc-surface" style={{ padding: 0 }}>
         <div className="cc-panel-header">
           <div className="cc-panel-title">Security Operations Center</div>
-          <button className="cc-btn cc-btn--ghost" onClick={() => void refresh()} disabled={busy}>
-            {busy ? "Refreshing…" : "Refresh"}
-          </button>
+          <div className="cc-panel-actions">
+            <span
+              className={`cc-chip ${confirmation?.active ? "cc-chip--ok" : "cc-chip--muted"}`}
+              title={
+                confirmation?.active
+                  ? `Step-up active${confirmation.expiresAt ? ` until ${new Date(confirmation.expiresAt).toLocaleTimeString()}` : ""}`
+                  : "Step-up not active. Sensitive actions will prompt for password."
+              }
+            >
+              {confirmation?.active ? "Step-up: active" : "Step-up: required for sensitive actions"}
+            </span>
+            <button className="cc-btn cc-btn--ghost" onClick={() => void refresh()} disabled={busy}>
+              {busy ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
         </div>
         <div className="cc-panel-body cc-soc">
           {notice ? <div className="cc-notice">{notice}</div> : null}
@@ -277,6 +330,8 @@ export function AdminPage() {
               </div>
             </div>
           </div>
+
+          <RiskPolicyPanel />
 
           {recoveryPolicy.length > 0 ? (
             <div className="cc-soc__card">
