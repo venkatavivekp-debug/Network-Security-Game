@@ -1,5 +1,7 @@
 package backend.exception;
 
+import backend.audit.AuditEventType;
+import backend.audit.AuditService;
 import backend.dto.ApiErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -8,7 +10,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -20,13 +24,21 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice(annotations = RestController.class)
 public class GlobalExceptionHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    private final AuditService auditService;
+
+    public GlobalExceptionHandler(AuditService auditService) {
+        this.auditService = auditService;
+    }
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleNotFound(ResourceNotFoundException ex, HttpServletRequest request) {
@@ -50,6 +62,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiErrorResponse> handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
+        recordForbiddenAccess(request, ex.getMessage());
         return buildErrorResponse(
                 HttpStatus.FORBIDDEN,
                 "Access denied",
@@ -76,6 +89,7 @@ public class GlobalExceptionHandler {
                 .map(this::formatFieldError)
                 .toList();
 
+        recordValidationRejection(request, "body", details);
         return buildErrorResponse(
                 HttpStatus.BAD_REQUEST,
                 "Validation failed",
@@ -91,6 +105,7 @@ public class GlobalExceptionHandler {
                 .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
                 .collect(Collectors.toList());
 
+        recordValidationRejection(request, "param", details);
         return buildErrorResponse(
                 HttpStatus.BAD_REQUEST,
                 "Validation failed",
@@ -101,7 +116,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
-        String detail = ex.getName() + ": invalid value '" + ex.getValue() + "'";
+        String detail = ex.getName() + ": invalid value";
+        recordValidationRejection(request, "type-mismatch", List.of(detail));
         return buildErrorResponse(
                 HttpStatus.BAD_REQUEST,
                 "Invalid request parameter",
@@ -112,6 +128,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiErrorResponse> handleUnreadable(HttpMessageNotReadableException ex, HttpServletRequest request) {
+        recordValidationRejection(request, "malformed-json", List.of("malformed-json"));
         return buildErrorResponse(
                 HttpStatus.BAD_REQUEST,
                 "Malformed request body",
@@ -170,5 +187,51 @@ public class GlobalExceptionHandler {
 
     private String formatFieldError(FieldError fieldError) {
         return fieldError.getField() + ": " + fieldError.getDefaultMessage();
+    }
+
+    private void recordForbiddenAccess(HttpServletRequest request, String reason) {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String username = (auth != null && auth.isAuthenticated()) ? auth.getName() : "anonymous";
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("path", request.getRequestURI());
+            details.put("method", request.getMethod());
+            if (reason != null && !reason.isBlank()) {
+                details.put("reason", reason.length() > 120 ? reason.substring(0, 120) : reason);
+            }
+            auditService.record(
+                    AuditEventType.FORBIDDEN_ACCESS,
+                    username,
+                    null,
+                    request.getRemoteAddr(),
+                    request.getHeader("User-Agent"),
+                    null,
+                    details
+            );
+        } catch (RuntimeException ignored) {
+            // auditing must never break the response
+        }
+    }
+
+    private void recordValidationRejection(HttpServletRequest request, String kind, List<String> details) {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String username = (auth != null && auth.isAuthenticated()) ? auth.getName() : "anonymous";
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("path", request.getRequestURI());
+            body.put("method", request.getMethod());
+            body.put("kind", kind);
+            body.put("count", details == null ? 0 : details.size());
+            auditService.record(
+                    AuditEventType.VALIDATION_REJECTED,
+                    username,
+                    null,
+                    request.getRemoteAddr(),
+                    request.getHeader("User-Agent"),
+                    null,
+                    body
+            );
+        } catch (RuntimeException ignored) {
+        }
     }
 }

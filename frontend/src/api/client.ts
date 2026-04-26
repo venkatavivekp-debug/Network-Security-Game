@@ -23,6 +23,29 @@ export class ApiError extends Error {
     const msg = (this.message || "").toLowerCase();
     return msg.includes("step-up") || msg.includes("admin step");
   }
+
+  /**
+   * User-facing safe message: turns server status codes into short,
+   * non-technical text that we can show in a toast/banner without
+   * leaking server internals.
+   */
+  userFacingMessage(): string {
+    if (this.status === 401) return "Session ended. Sign in again to continue.";
+    if (this.status === 403) {
+      if (this.isAdminStepUpRequired()) return "Admin verification required.";
+      const msg = (this.message || "").toLowerCase();
+      if (msg.includes("security header")) {
+        return "Request blocked for safety. Reload the page and try again.";
+      }
+      return "Action not allowed for this account.";
+    }
+    if (this.status === 404) return "Item not found or no longer available.";
+    if (this.status === 408 || this.status === 410) return "Challenge expired. Reload to start over.";
+    if (this.status === 413) return "Request too large. Shorten it and try again.";
+    if (this.status === 429) return "Too many requests. Slow down and retry shortly.";
+    if (this.status >= 500) return "Server is having trouble. Please try again.";
+    return this.message || "Request could not be completed.";
+  }
 }
 
 async function parseJsonSafe(res: Response): Promise<unknown> {
@@ -52,6 +75,10 @@ export const adminStepUp = {
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    // Compensating CSRF control: the backend requires this header on every
+    // mutating request. Browsers refuse to set it for cross-origin HTML forms
+    // without a preflight, so this gates simple cross-site POSTs.
+    "X-Requested-With": "XMLHttpRequest",
     ...((init?.headers as Record<string, string>) ?? {}),
   };
   if (stepUpToken && path.startsWith("/admin/")) {

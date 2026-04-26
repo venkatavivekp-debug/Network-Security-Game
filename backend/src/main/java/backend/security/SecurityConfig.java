@@ -1,5 +1,6 @@
 package backend.security;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -12,6 +13,13 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @EnableMethodSecurity
@@ -20,20 +28,34 @@ public class SecurityConfig {
     private final DatabaseUserDetailsService userDetailsService;
     private final ApiAuthenticationEntryPoint apiAuthenticationEntryPoint;
     private final ApiAccessDeniedHandler apiAccessDeniedHandler;
+    private final CustomHeaderCsrfFilter customHeaderCsrfFilter;
+    private final SecurityHeadersFilter securityHeadersFilter;
+
+    @Value("${app.security.cors.allowed-origins:http://localhost:5173,http://localhost:5174,http://localhost:3000}")
+    private String corsAllowedOrigins;
 
     public SecurityConfig(
             DatabaseUserDetailsService userDetailsService,
             ApiAuthenticationEntryPoint apiAuthenticationEntryPoint,
-            ApiAccessDeniedHandler apiAccessDeniedHandler
+            ApiAccessDeniedHandler apiAccessDeniedHandler,
+            CustomHeaderCsrfFilter customHeaderCsrfFilter,
+            SecurityHeadersFilter securityHeadersFilter
     ) {
         this.userDetailsService = userDetailsService;
         this.apiAuthenticationEntryPoint = apiAuthenticationEntryPoint;
         this.apiAccessDeniedHandler = apiAccessDeniedHandler;
+        this.customHeaderCsrfFilter = customHeaderCsrfFilter;
+        this.securityHeadersFilter = securityHeadersFilter;
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                .cors(Customizer.withDefaults())
+                // We deliberately disable Spring's stateful CSRF token in favour of a
+                // custom-header check (CustomHeaderCsrfFilter) plus SameSite cookies
+                // and a locked-down CORS allow-list. See README "External Threat
+                // Protection" for the trade-off rationale.
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
@@ -51,6 +73,8 @@ public class SecurityConfig {
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(apiAuthenticationEntryPoint)
                         .accessDeniedHandler(apiAccessDeniedHandler))
+                .addFilterBefore(securityHeadersFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(customHeaderCsrfFilter, UsernamePasswordAuthenticationFilter.class)
                 .authenticationProvider(authenticationProvider())
                 .httpBasic(Customizer.withDefaults())
                 .formLogin(form -> form.disable())
@@ -62,6 +86,27 @@ public class SecurityConfig {
                         .deleteCookies("NSG_SESSION", "JSESSIONID"));
 
         return http.build();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        List<String> origins = Arrays.stream(corsAllowedOrigins.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .toList();
+        // Never combine credentials with a wildcard origin — that's an explicit
+        // OWASP misconfiguration. Each origin is matched exactly.
+        config.setAllowedOrigins(origins);
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With",
+                "X-Admin-Confirm", "Accept", "Accept-Language"));
+        config.setExposedHeaders(List.of("Retry-After"));
+        config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 
     @Bean
