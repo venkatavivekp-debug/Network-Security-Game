@@ -4,6 +4,7 @@ import { ApiError } from "../api/client";
 import type {
   AuditEventView,
   HeldMessageView,
+  RecoveryPolicyEntry,
   SystemPressureResponse,
   UserAtRiskView,
 } from "../api/types";
@@ -19,15 +20,31 @@ const ALERT_TONE: Record<string, string> = {
   MESSAGE_HOLD: "tone-recovery",
   MESSAGE_SEND: "tone-info",
   MESSAGE_DECRYPT: "tone-info",
+  MESSAGE_UNLOCKED: "tone-defense",
+  SESSION_REGENERATED: "tone-info",
+  SESSION_ANOMALY: "tone-attack",
+  RATE_LIMIT_BLOCKED: "tone-attack",
+  AUTH_LOGIN_FAILURE: "tone-attack",
+  AUTH_ACCOUNT_LOCKED: "tone-attack",
+  AUTH_LOGOUT: "tone-info",
 };
 
-const CRITICAL_EVENTS = new Set(["ADAPTIVE_ESCALATION", "MESSAGE_HOLD", "PUZZLE_SOLVE_FAILURE"]);
+const CRITICAL_EVENTS = new Set([
+  "ADAPTIVE_ESCALATION",
+  "MESSAGE_HOLD",
+  "PUZZLE_SOLVE_FAILURE",
+  "SESSION_ANOMALY",
+  "RATE_LIMIT_BLOCKED",
+  "AUTH_ACCOUNT_LOCKED",
+]);
 
 export function AdminPage() {
   const { user } = useAuth();
   const [held, setHeld] = useState<HeldMessageView[]>([]);
   const [risk, setRisk] = useState<UserAtRiskView[]>([]);
   const [audit, setAudit] = useState<AuditEventView[]>([]);
+  const [suspicious, setSuspicious] = useState<AuditEventView[]>([]);
+  const [recoveryPolicy, setRecoveryPolicy] = useState<RecoveryPolicyEntry[]>([]);
   const [intensity, setIntensity] = useState<number>(0);
   const [pressure, setPressure] = useState<SystemPressureResponse | null>(null);
   const [busy, setBusy] = useState(false);
@@ -39,18 +56,22 @@ export function AdminPage() {
     setBusy(true);
     setNotice(null);
     try {
-      const [h, u, a, t, p] = await Promise.all([
+      const [h, u, a, t, p, s, rp] = await Promise.all([
         adminApi.heldMessages(),
         adminApi.usersAtRisk(),
         adminApi.recentAudit(),
         adminApi.threatLevel(),
         adminApi.systemPressure().catch(() => null),
+        adminApi.suspiciousSessions().catch(() => [] as AuditEventView[]),
+        adminApi.recoveryPolicy().catch(() => [] as RecoveryPolicyEntry[]),
       ]);
       setHeld(h);
       setRisk(u);
       setAudit(a.slice(0, 20));
       setIntensity(t.attackIntensity01 ?? 0);
       setPressure(p);
+      setSuspicious(s.slice(0, 12));
+      setRecoveryPolicy(rp);
     } catch (err) {
       setNotice(err instanceof ApiError ? err.message : "Could not load admin data.");
     } finally {
@@ -158,28 +179,58 @@ export function AdminPage() {
             </div>
           </div>
 
-          <div className="cc-soc__card">
-            <div className="cc-soc__card-title">
-              <span className="cc-pulse-dot" /> Live alert feed
+          <div className="cc-soc__row cc-soc__row--two">
+            <div className="cc-soc__card">
+              <div className="cc-soc__card-title">
+                <span className="cc-pulse-dot" /> Live alert feed
+              </div>
+              <ul className="cc-feed-list">
+                {audit.length === 0 ? <li className="cc-feed-empty">No recent activity.</li> : null}
+                {audit.slice(0, 12).map((e) => {
+                  const tone = ALERT_TONE[e.eventType] ?? "tone-info";
+                  const critical = CRITICAL_EVENTS.has(e.eventType);
+                  return (
+                    <li key={e.id} className={`cc-feed-item ${critical ? "is-critical" : ""}`}>
+                      <span className="cc-feed-time">{new Date(e.createdAt).toLocaleTimeString()}</span>
+                      <span className={`cc-feed-msg ${tone}`}>
+                        <strong>{e.eventType.replace(/_/g, " ")}</strong>
+                        {e.actorUsername ? ` · actor ${e.actorUsername}` : ""}
+                        {e.subjectUsername ? ` · subject ${e.subjectUsername}` : ""}
+                        {e.riskScore != null ? ` · risk ${(e.riskScore as number).toFixed(2)}` : ""}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
-            <ul className="cc-feed-list">
-              {audit.length === 0 ? <li className="cc-feed-empty">No recent activity.</li> : null}
-              {audit.slice(0, 12).map((e) => {
-                const tone = ALERT_TONE[e.eventType] ?? "tone-info";
-                const critical = CRITICAL_EVENTS.has(e.eventType);
-                return (
-                  <li key={e.id} className={`cc-feed-item ${critical ? "is-critical" : ""}`}>
-                    <span className="cc-feed-time">{new Date(e.createdAt).toLocaleTimeString()}</span>
-                    <span className={`cc-feed-msg ${tone}`}>
-                      <strong>{e.eventType.replace(/_/g, " ")}</strong>
-                      {e.actorUsername ? ` · actor ${e.actorUsername}` : ""}
-                      {e.subjectUsername ? ` · subject ${e.subjectUsername}` : ""}
-                      {e.riskScore != null ? ` · risk ${(e.riskScore as number).toFixed(2)}` : ""}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
+
+            <div className="cc-soc__card">
+              <div className="cc-soc__card-title">
+                <span className="cc-pulse-dot" /> Suspicious sessions
+              </div>
+              <ul className="cc-feed-list">
+                {suspicious.length === 0 ? (
+                  <li className="cc-feed-empty">No anomalies, lockouts or rate-limit blocks recorded.</li>
+                ) : null}
+                {suspicious.slice(0, 10).map((e) => {
+                  const tone = ALERT_TONE[e.eventType] ?? "tone-attack";
+                  const critical = CRITICAL_EVENTS.has(e.eventType);
+                  return (
+                    <li key={e.id} className={`cc-feed-item ${critical ? "is-critical" : ""}`}>
+                      <span className="cc-feed-time">{new Date(e.createdAt).toLocaleTimeString()}</span>
+                      <span className={`cc-feed-msg ${tone}`}>
+                        <strong>{prettyEvent(e.eventType)}</strong>
+                        {e.subjectUsername ? ` · ${e.subjectUsername}` : ""}
+                        {e.ipHash ? ` · ip ${e.ipHash.slice(0, 8)}` : ""}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="cc-soc__hint">
+                Session anomalies, account lockouts, and rate-limit blocks. No plaintext is ever logged.
+              </div>
+            </div>
           </div>
 
           <div className="cc-soc__row cc-soc__row--two">
@@ -226,10 +277,60 @@ export function AdminPage() {
               </div>
             </div>
           </div>
+
+          {recoveryPolicy.length > 0 ? (
+            <div className="cc-soc__card">
+              <div className="cc-soc__card-title">Recovery playbook</div>
+              <div className="cc-recovery-playbook">
+                {recoveryPolicy.map((p) => (
+                  <div
+                    key={p.state}
+                    className={`cc-recovery-playbook__row ${p.terminalGood ? "is-good" : ""}`}
+                  >
+                    <span className="cc-recovery-playbook__state">{p.state.replace(/_/g, " ")}</span>
+                    <span className="cc-recovery-playbook__summary">{p.summary}</span>
+                    {p.nextSteps.length > 0 ? (
+                      <ul className="cc-recovery-playbook__steps">
+                        {p.nextSteps.map((s, i) => (
+                          <li key={i}>{s}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <span className="cc-recovery-playbook__steps cc-recovery-playbook__steps--empty">
+                        Terminal good state — no further action required.
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="cc-soc__hint">
+                Every recovery state has an explicit next step. No dead-ends.
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
     </div>
   );
+}
+
+function prettyEvent(eventType: string): string {
+  switch (eventType) {
+    case "SESSION_ANOMALY":
+      return "Session anomaly";
+    case "SESSION_REGENERATED":
+      return "Session regenerated";
+    case "RATE_LIMIT_BLOCKED":
+      return "Rate-limit blocked";
+    case "AUTH_LOGIN_FAILURE":
+      return "Login failure";
+    case "AUTH_ACCOUNT_LOCKED":
+      return "Account locked";
+    case "AUTH_LOGOUT":
+      return "Logout";
+    default:
+      return eventType.replace(/_/g, " ");
+  }
 }
 
 function buildNodes(held: HeldMessageView[], risk: UserAtRiskView[]): NetworkNode[] {

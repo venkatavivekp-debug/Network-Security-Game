@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
   AlgorithmType,
+  ConnectionSecurityState,
   MessageSendResponse,
   MessageSummaryResponse,
   PuzzleChallengeResponse,
@@ -139,6 +140,51 @@ function StateBadge({ state }: { state: RecoveryState | null }) {
   );
 }
 
+const CONNECTION_TONE: Record<ConnectionSecurityState, { label: string; bg: string; ink: string }> = {
+  STABLE: { label: "Stable session", bg: "rgba(61, 220, 151, 0.18)", ink: "rgba(187, 246, 215, 0.95)" },
+  FIRST_SEEN: { label: "New device", bg: "rgba(100, 181, 255, 0.18)", ink: "rgba(196, 226, 255, 0.95)" },
+  ANOMALOUS: { label: "Suspicious session", bg: "rgba(255, 93, 108, 0.20)", ink: "rgba(255, 200, 210, 0.95)" },
+};
+
+function ConnectionBadge({ state }: { state: ConnectionSecurityState | null }) {
+  if (!state) return null;
+  const tone = CONNECTION_TONE[state];
+  return (
+    <span
+      title={`Connection security: ${state}`}
+      style={{
+        display: "inline-flex",
+        padding: "2px 10px",
+        borderRadius: 999,
+        background: tone.bg,
+        color: tone.ink,
+        fontSize: 12,
+        fontWeight: 800,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+      }}
+    >
+      {tone.label}
+    </span>
+  );
+}
+
+function RecoveryPlan({ summary, steps }: { summary: string | null; steps: string[] | null }) {
+  if (!summary && (!steps || steps.length === 0)) return null;
+  return (
+    <div className="cc-recovery-plan">
+      {summary ? <div className="cc-recovery-plan__summary">{summary}</div> : null}
+      {steps && steps.length ? (
+        <ol className="cc-recovery-plan__steps">
+          {steps.map((s, idx) => (
+            <li key={idx}>{s}</li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
+  );
+}
+
 function SendPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: string | null) => void }) {
   const [receiverUsername, setReceiverUsername] = useState("");
   const [content, setContent] = useState("");
@@ -168,11 +214,25 @@ function SendPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: stri
     }
   }
 
+  const loadout = describeLoadout(algorithmType, puzzleType);
+
   return (
     <div style={{ display: "grid", gap: 12 }}>
       {!enabled ? (
         <div className="cc-notice">This account is not allowed to send messages. Login as `SENDER`.</div>
       ) : null}
+
+      <div className="cc-loadout" aria-label="Security loadout">
+        <div className="cc-loadout__title">Security loadout</div>
+        <div className="cc-loadout__chips">
+          <span className={`cc-loadout-chip is-${algorithmType.toLowerCase()}`}>{algorithmType}</span>
+          {algorithmType === "CPHS" ? (
+            <span className="cc-loadout-chip is-puzzle">{puzzleType.replace("_", " ")}</span>
+          ) : null}
+          <span className="cc-loadout-chip is-meta">{loadout.tier}</span>
+        </div>
+        <div className="cc-loadout__hint">{loadout.hint}</div>
+      </div>
 
       <label className="cc-label">
         Receiver username
@@ -227,31 +287,66 @@ function SendPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: stri
             <strong>Send result</strong>
             <RiskBadge level={last.riskLevel} score={last.riskScore} />
             <StateBadge state={last.recoveryState} />
+            <ConnectionBadge state={last.connectionSecurityState ?? null} />
           </div>
           <RiskMeter score={last.riskScore} level={last.riskLevel} />
-          <div className="cc-result-row">
-            <span>Requested mode</span>
-            <span>{last.requestedAlgorithmType}</span>
-          </div>
-          <div className="cc-result-row">
-            <span>Enforced mode</span>
-            <span>
-              {last.effectiveAlgorithmType}
-              {last.escalated ? " (escalated)" : ""}
-            </span>
+          <div className="cc-loadout-compare">
+            <div className="cc-loadout-compare__cell">
+              <span className="cc-loadout-compare__label">Requested</span>
+              <span className={`cc-loadout-chip is-${last.requestedAlgorithmType.toLowerCase()}`}>
+                {last.requestedAlgorithmType}
+              </span>
+            </div>
+            <div className={`cc-loadout-compare__arrow ${last.escalated ? "is-escalated" : ""}`} aria-hidden>
+              {last.escalated ? "›› STEP-UP" : "››"}
+            </div>
+            <div className="cc-loadout-compare__cell">
+              <span className="cc-loadout-compare__label">Enforced</span>
+              <span className={`cc-loadout-chip is-${last.effectiveAlgorithmType.toLowerCase()}`}>
+                {last.effectiveAlgorithmType}
+              </span>
+            </div>
           </div>
           <div className="cc-result-row">
             <span>Admin review required</span>
             <span>{last.adminReviewRequired ? "yes" : "no"}</span>
           </div>
+          {last.escalationReason ? (
+            <div className="cc-result-row">
+              <span>Escalation reason</span>
+              <span>{last.escalationReason}</span>
+            </div>
+          ) : null}
           {last.warningMessage ? <div className="cc-notice">{last.warningMessage}</div> : null}
           {last.riskReasons && last.riskReasons.length ? (
-            <div style={{ fontSize: 12, color: "var(--cc-muted)" }}>Reasons: {last.riskReasons.join(", ")}</div>
+            <div style={{ fontSize: 12, color: "var(--cc-muted)" }}>
+              <strong style={{ color: "var(--cc-ink)" }}>Risk signals:</strong> {last.riskReasons.join(" · ")}
+            </div>
           ) : null}
+          <RecoveryPlan summary={last.recoverySummary ?? null} steps={last.recoveryNextSteps ?? null} />
         </div>
       ) : null}
     </div>
   );
+}
+
+function describeLoadout(algo: AlgorithmType, puzzle: PuzzleType): { tier: string; hint: string } {
+  if (algo === "NORMAL") {
+    return {
+      tier: "Tier I",
+      hint: "Plain channel encryption. Lowest friction; no receiver challenge required.",
+    };
+  }
+  if (algo === "SHCS") {
+    return {
+      tier: "Tier II",
+      hint: "Self-Healing Cipher. Adaptive engine can auto-rotate keys under pressure.",
+    };
+  }
+  return {
+    tier: "Tier III",
+    hint: `CPHS challenge gate: receiver must clear ${puzzle.replace("_", " ")} before decrypt.`,
+  };
 }
 
 function InboxPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: string | null) => void }) {
@@ -413,6 +508,11 @@ function InboxPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: str
               />
 
               <AttackTimeline steps={timelineFor(selected.recoveryState)} />
+
+              <RecoveryPlan
+                summary={selected.recoverySummary ?? (selected.recoveryState ? RECOVERY_COPY[selected.recoveryState] : null)}
+                steps={selected.recoveryNextSteps ?? null}
+              />
 
               {selected.warningMessage || selected.warning ? (
                 <div className="cc-notice">{selected.warningMessage ?? selected.warning}</div>

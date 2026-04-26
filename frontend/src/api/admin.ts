@@ -1,10 +1,18 @@
 import { apiRequest } from "./client";
-import type { AuditEventView, HeldMessageView, SystemPressureResponse, UserAtRiskView } from "./types";
+import type {
+  AuditEventView,
+  HeldMessageView,
+  RecoveryPolicyEntry,
+  SystemPressureResponse,
+  UserAtRiskView,
+} from "./types";
 
 export const adminApi = {
   heldMessages: () => apiRequest<HeldMessageView[]>("/admin/held-messages", { method: "GET" }),
   usersAtRisk: () => apiRequest<UserAtRiskView[]>("/admin/users-at-risk", { method: "GET" }),
   recentAudit: () => apiRequest<AuditEventView[]>("/admin/audit/recent", { method: "GET" }),
+  suspiciousSessions: () => apiRequest<AuditEventView[]>("/admin/audit/suspicious-sessions", { method: "GET" }),
+  recoveryPolicy: () => apiRequest<RecoveryPolicyEntry[]>("/admin/recovery-policy", { method: "GET" }),
   threatLevel: () => apiRequest<{ attackIntensity01: number }>("/admin/threat-level", { method: "GET" }),
   systemPressure: () => apiRequest<SystemPressureResponse>("/admin/system-pressure", { method: "GET" }),
   setThreatLevel: (intensity: number) => {

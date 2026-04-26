@@ -1248,6 +1248,213 @@ body {
   animation: cc-pulse-warn 1.6s infinite;
 }
 
+/* ---------- Sender security loadout ---------- */
+
+.cc-loadout {
+  border: 1px solid rgba(100, 181, 255, 0.22);
+  background: linear-gradient(160deg, rgba(100, 181, 255, 0.08), rgba(7, 11, 18, 0.55));
+  border-radius: 16px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.35);
+}
+
+.cc-loadout__title {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  color: rgba(196, 226, 255, 0.85);
+  text-transform: uppercase;
+}
+
+.cc-loadout__chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cc-loadout__hint {
+  color: var(--cc-muted);
+  font-weight: 650;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.cc-loadout-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid rgba(123, 145, 189, 0.28);
+  background: rgba(7, 11, 18, 0.55);
+  color: rgba(234, 242, 255, 0.92);
+}
+
+.cc-loadout-chip.is-normal {
+  border-color: rgba(123, 145, 189, 0.32);
+  background: rgba(123, 145, 189, 0.12);
+}
+.cc-loadout-chip.is-shcs {
+  border-color: rgba(61, 220, 151, 0.42);
+  background: rgba(61, 220, 151, 0.14);
+  color: rgba(187, 246, 215, 0.95);
+}
+.cc-loadout-chip.is-cphs {
+  border-color: rgba(246, 196, 69, 0.46);
+  background: rgba(246, 196, 69, 0.16);
+  color: rgba(255, 226, 156, 0.96);
+}
+.cc-loadout-chip.is-puzzle {
+  border-color: rgba(86, 204, 242, 0.44);
+  background: rgba(86, 204, 242, 0.14);
+  color: rgba(196, 240, 255, 0.95);
+}
+.cc-loadout-chip.is-meta {
+  border-color: rgba(123, 145, 189, 0.22);
+  background: rgba(7, 11, 18, 0.45);
+  color: var(--cc-muted);
+}
+
+.cc-loadout-compare {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--cc-line);
+  border-radius: 14px;
+  background: rgba(7, 11, 18, 0.40);
+}
+
+.cc-loadout-compare__cell {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+
+.cc-loadout-compare__label {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  color: var(--cc-muted);
+  text-transform: uppercase;
+}
+
+.cc-loadout-compare__arrow {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  color: rgba(123, 145, 189, 0.78);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.cc-loadout-compare__arrow.is-escalated {
+  color: rgba(255, 200, 110, 0.96);
+  text-shadow: 0 0 12px rgba(246, 196, 69, 0.45);
+}
+
+/* ---------- Recovery plan (sender + receiver) ---------- */
+
+.cc-recovery-plan {
+  border: 1px solid rgba(86, 204, 242, 0.28);
+  background: rgba(86, 204, 242, 0.06);
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.cc-recovery-plan__summary {
+  font-weight: 800;
+  color: rgba(196, 240, 255, 0.95);
+  font-size: 13px;
+}
+
+.cc-recovery-plan__steps {
+  margin: 0;
+  padding: 0 0 0 18px;
+  color: var(--cc-muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.cc-recovery-plan__steps li + li { margin-top: 2px; }
+
+/* ---------- Admin SOC: recovery playbook ---------- */
+
+.cc-recovery-playbook {
+  display: grid;
+  gap: 8px;
+}
+
+.cc-recovery-playbook__row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  grid-template-areas:
+    "state summary"
+    "steps steps";
+  gap: 4px 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--cc-line);
+  border-radius: 12px;
+  background: rgba(7, 11, 18, 0.42);
+}
+
+.cc-recovery-playbook__row.is-good {
+  border-color: rgba(61, 220, 151, 0.30);
+  background: rgba(61, 220, 151, 0.05);
+}
+
+.cc-recovery-playbook__state {
+  grid-area: state;
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: rgba(234, 242, 255, 0.92);
+}
+
+.cc-recovery-playbook__summary {
+  grid-area: summary;
+  font-size: 13px;
+  color: var(--cc-ink);
+  font-weight: 700;
+}
+
+.cc-recovery-playbook__steps {
+  grid-area: steps;
+  margin: 4px 0 0 0;
+  padding: 0 0 0 18px;
+  color: var(--cc-muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.cc-recovery-playbook__steps--empty {
+  padding: 0;
+  list-style: none;
+  font-style: italic;
+  color: rgba(187, 246, 215, 0.85);
+}
+
+@media (max-width: 720px) {
+  .cc-recovery-playbook__row {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "state"
+      "summary"
+      "steps";
+  }
+}
+
 /* ---------- Reduced motion ---------- */
 
 @media (prefers-reduced-motion: reduce) {

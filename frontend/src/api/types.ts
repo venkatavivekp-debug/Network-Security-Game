@@ -71,10 +71,15 @@ export interface MessageSendResponse {
   escalationReason: string | null;
   recoveryState: RecoveryState | null;
   adminReviewRequired: boolean;
+  recoverySummary: string | null;
+  recoveryNextSteps: string[] | null;
+  connectionSecurityState: ConnectionSecurityState | null;
   warningMessage: string | null;
   createdAt: string;
   status: string;
 }
+
+export type ConnectionSecurityState = "STABLE" | "FIRST_SEEN" | "ANOMALOUS";
 
 export interface MessageSummaryResponse {
   id: number;
@@ -90,6 +95,8 @@ export interface MessageSummaryResponse {
   warningMessage: string | null;
   recoveryState: RecoveryState | null;
   adminReviewRequired: boolean;
+  recoverySummary: string | null;
+  recoveryNextSteps: string[] | null;
   metadata: string | null;
   createdAt: string;
 }
@@ -153,6 +160,13 @@ export interface UserAtRiskView {
   recoveryEvents: number;
   lastFailureAt: string | null;
   lastSuccessAt: string | null;
+}
+
+export interface RecoveryPolicyEntry {
+  state: RecoveryState;
+  terminalGood: boolean;
+  summary: string;
+  nextSteps: string[];
 }
 
 export interface AuditEventView {
