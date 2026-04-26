@@ -1,51 +1,141 @@
 # Network-Security-Game
 
-Game-theoretic adaptive cybersecurity system for secure communication and recovery.
+Adaptive game-theoretic secure messaging and recovery system.
 
-## 1. Core idea
+A sender and a receiver communicate through a small game-theoretic protocol.
+The sender picks a protection mode. The receiver clears a security challenge to
+unlock the message. The system adapts when behavior looks suspicious. An admin
+supervises recovery without ever seeing plaintext.
 
-- A **sender** picks a protection mode for each message.
-- The **receiver** must pass a challenge to unlock it.
-- The system **adapts** to user behavior and global threat signals.
-- An **admin** supervises recovery without ever seeing plaintext.
+## 1. What this is
 
-The point is not just sending an encrypted message. It is treating the link
-between sender, receiver, attacker, and admin as a small game whose state moves
-through *attack → defense → recovery*.
+This project takes the idea from the source report — modelling a secure
+connection as an *attack → defense → recovery* game — and turns it into a
+working full-stack system:
+
+- A **Spring Boot** backend that holds the protocol, adaptive policy, audit
+  trail, and recovery state machine.
+- A **React** command-center frontend that surfaces the same state visually
+  (security loadout, puzzle arena, threat panel, SOC).
+- An evaluation harness that runs reproducible attack/defense/recovery
+  scenarios and reports comparable metrics across modes.
+
+It is a research-style sandbox, not a production secure-messenger. Limitations
+are listed honestly at the end.
 
 ## 2. Security modes
 
 - **NORMAL** — AES-GCM. Baseline confidentiality.
-- **SHCS** — packaging with hidden/committed metadata; layered posture.
-- **CPHS** — receiver must solve a cryptographic challenge before the key is recoverable.
-- **ADAPTIVE** — risk-driven: the engine may upgrade the requested mode (e.g. NORMAL → CPHS) or place a message on hold for admin review.
+- **SHCS** — Self-Healing Cipher: layered packaging with hidden/committed
+  metadata; the adaptive engine can rotate posture under pressure.
+- **CPHS** — Challenge-Protected Hidden Seal: the receiver must solve a
+  cryptographic challenge before the wrapping key is recoverable.
+- **ADAPTIVE** — risk-driven: the engine may upgrade the requested mode
+  (e.g. NORMAL → CPHS) or place a message on hold for admin review.
 
-## 3. Puzzle system (CPHS)
+## 3. Secure connection flow
+
+```
+sender ──► /message/send ──► adaptive engine ──► encrypted payload + recovery plan
+                                  │
+                                  ├─ risk LOW         → enforce requested mode
+                                  ├─ risk ELEVATED    → step up to SHCS / CPHS
+                                  └─ risk CRITICAL    → CPHS + HOLD (admin review)
+
+receiver ──► /puzzle/challenge ──► CPHS challenge ──► /puzzle/solve ──► /message/decrypt
+                                                            │
+                                                            └─ failure burst → HELD
+
+admin    ──► /admin/release ──► RECOVERY_IN_PROGRESS ──► RECOVERED
+admin    ──► /admin/reset-failures (no plaintext access ever)
+```
+
+Every send returns its current `connectionSecurityState`, `recoveryState`,
+`recoverySummary`, and `recoveryNextSteps`. Every recovery state has an
+explicit next step — no dead ends.
+
+## 4. OWASP-inspired hardening
+
+Applied where it actually fits the secure-connection model. Not generic
+boilerplate.
+
+- **Session security**
+  - Session ID is regenerated after a successful login (defense against
+    session fixation), and an `AUTH_LOGIN_SUCCESS` + `SESSION_REGENERATED`
+    audit pair is recorded.
+  - Cookies are `HttpOnly`, `SameSite=Lax`, `Secure` in the docker profile,
+    with a 30-minute idle timeout.
+  - Logout invalidates the HTTP session and clears `NSG_SESSION` /
+    `JSESSIONID` cookies. A JSON `POST /auth/logout` is also exposed.
+  - A small `ConnectionSecurityService` evaluates session/device consistency
+    against the last-seen fingerprint and emits a `SESSION_ANOMALY` audit
+    event when the fingerprint changes mid-session.
+
+- **Adaptive verification (defense in depth, not lockout)**
+  - Risk-based step-up: elevated risk requires SHCS/CPHS; critical risk
+    triggers a temporary admin-supervised hold.
+  - Repeated wrong puzzle answers escalate, but a single anomaly never
+    permanently locks a user — admin reset and re-issuance always exist.
+
+- **Rate limiting and brute-force protection**
+  - Token-bucket rate limits on `POST /auth/login`, `POST /auth/register`,
+    `POST /message/send`, `POST /puzzle/solve/*`, and `POST /admin/*`.
+  - Returns clean HTTP `429` with `Retry-After` header and a `retry-after-
+    seconds` hint in the JSON body. Each block emits a `RATE_LIMIT_BLOCKED`
+    audit event.
+
+- **Crypto / key hygiene**
+  - No default production secrets. The startup validator fails fast outside
+    `dev` if `APP_CRYPTO_MASTER_KEY` / `APP_CRYPTO_SHCS_KEY` are missing.
+  - `.env` is git-ignored; only `.env.example` is checked in, and it
+    contains placeholders, not keys.
+  - Plaintext is never persisted — only AES-GCM ciphertext, IV, and
+    SHCS/CPHS metadata land in the database.
+  - Key rotation is intentionally a re-deploy concern: rotate the two AES
+    keys and existing rows simply require re-encryption (or re-issue), there
+    is no "wrap-around" decrypt path.
+
+- **Access control**
+  - `SENDER` cannot decrypt or read receiver-only data. `RECEIVER` cannot
+    access another receiver's messages. `ADMIN` can hold/release/reset but
+    cannot decrypt — there is no admin code path that returns plaintext.
+  - Tested in `MessageAccessControlTest` (sender→decrypt blocked,
+    receiver→other-inbox blocked, HELD→decrypt blocked) and
+    `AdminControllerTest` (held-message endpoint never exposes content).
+
+- **Error handling**
+  - Spring `server.error.include-stacktrace=never`,
+    `include-message=never`, `include-exception=false`. The frontend renders
+    the JSON `ApiErrorResponse.details` array, not raw stack traces.
+
+## 5. Puzzle system (CPHS)
 
 Each puzzle is bound to a `(message, receiver, generated-at)` tuple,
 non-replayable, attempt-limited, and time-bounded.
 
-- **Hash puzzle** — find a nonce so `SHA-256(challenge:nonce)` matches a target.
-- **Arithmetic challenge** — evaluate a generated math expression.
-- **Encoded message** — base64 / simple cipher decode.
-- **Pattern puzzle** — continue a numeric sequence (arithmetic / geometric / Fibonacci-like).
+- **Hash puzzle (POW)** — find a nonce so `SHA-256(challenge:nonce)` matches
+  a target.
+- **Arithmetic** — evaluate a generated expression.
+- **Encoded** — base64 / simple cipher decode.
+- **Pattern** — continue an arithmetic / geometric / Fibonacci-like sequence.
 
-A correct answer derives the wrapping key; a wrong answer is recorded but never leaks anything about the plaintext.
+A correct answer derives the wrapping key. A wrong answer is recorded but
+never leaks anything about the plaintext.
 
-## 4. Adaptive security
+## 6. Adaptive learning
 
-- **Risk score** in `[0, 1]` derived from puzzle pressure, login anomalies, fingerprint, and global threat level.
+- **Risk score** in `[0, 1]` from puzzle pressure, login anomalies,
+  fingerprint changes, and the global threat level.
 - **Levels**: `LOW`, `ELEVATED`, `HIGH`, `CRITICAL`.
 - **Escalation rules**:
   - `ELEVATED` → prefer SHCS for NORMAL requests.
   - `HIGH` → enforce CPHS.
   - `CRITICAL` → enforce CPHS + temporary hold for admin review.
-- **Behavior tracking**: per-user puzzle attempts, failures, average solve time, recovery events; bursts decay over time.
+- **Behavior tracking**: per-user puzzle attempts, failures, average solve
+  time, recovery events; bursts decay over time so a single bad session
+  cannot poison the user's profile forever.
 
-Every `MessageSendResponse` includes `riskScore`, `riskLevel`, `riskReasons`,
-`recoveryState`, and (when relevant) `warningMessage`.
-
-## 5. Recovery model
+## 7. Admin-supervised recovery
 
 The recovery state machine has **no dead ends**:
 
@@ -56,29 +146,19 @@ NORMAL → CHALLENGE_REQUIRED → ESCALATED → HELD → ADMIN_REVIEW_REQUIRED
                                                    ↘ FAILED → (admin reset / re-issue)
 ```
 
-Every blocked state has a path back: solve the puzzle, admin release, or
-counter reset. Plaintext never crosses the admin layer.
+Admin powers:
 
-## 6. Simulation + evaluation
+- **Hold / release** a message (no plaintext access).
+- **Reset puzzle failure counters** for a user.
+- **View** the live alert feed, the suspicious-session feed
+  (`SESSION_ANOMALY`, `RATE_LIMIT_BLOCKED`, `AUTH_ACCOUNT_LOCKED`,
+  failed logins), the held-messages list, and the recovery playbook
+  (every `RecoveryState` and its explicit next step).
 
-A graph-based simulator runs an *attack → defense → recovery* loop on a
-parametrized topology. Metrics:
+## 8. Evaluation results
 
-- `compromiseRatio`
-- `resilienceScore`
-- `averageRecoveryTime`
-- `userEffortScore`
-- `attackSuccessRate`
-- `falsePositiveRate` (admin-hold rate for ADAPTIVE)
-
-Runs are **reproducible** when a `seed` is provided; otherwise a stable seed is
-derived from scenario parameters. The harness is exposed via `GET /evaluation/compare`
-and `GET /evaluation/analysis`.
-
-## 7. Results
-
-Reproducible run: `seed=20260424`, `numberOfRuns=30`, `numNodes=20`, `numEdges=35`,
-`defenseStrategy=REDUNDANCY`.
+Reproducible run: `seed=20260424`, `numberOfRuns=30`, `numNodes=20`,
+`numEdges=35`, `defenseStrategy=REDUNDANCY`.
 
 | attackIntensity | mode | compromiseRatio | resilienceScore | recoveryTime | userEffort |
 |---:|---|---:|---:|---:|---:|
@@ -97,13 +177,17 @@ Reproducible run: `seed=20260424`, `numberOfRuns=30`, `numNodes=20`, `numEdges=3
 
 What the run shows:
 
-- **CPHS** has the lowest compromise and highest resilience at every tested intensity, at the cost of high user effort.
-- **SHCS** gives a small, consistent improvement over NORMAL with low effort.
+- **CPHS** has the lowest compromise and highest resilience at every tested
+  intensity, at the cost of high user effort.
+- **SHCS** gives a small, consistent improvement over NORMAL with low
+  effort.
 - **NORMAL** degrades fastest under attack.
-- **ADAPTIVE** stayed close to NORMAL on this seed; the harness exists exactly so this kind of result is honest, not hand-waved.
-- The system maintained valid recovery paths under all conditions (no `FAILED` end-state without a re-entry route).
+- **ADAPTIVE** stayed close to NORMAL on this seed; the harness exists
+  exactly so this kind of result is honest, not hand-waved.
+- The system maintained valid recovery paths under all conditions (no
+  `FAILED` end-state without a re-entry route).
 
-## 8. How to run
+## 9. How to run
 
 ### Backend
 
@@ -114,8 +198,11 @@ mvn spring-boot:run
 # → http://localhost:8080
 ```
 
-For a no-setup run with MySQL bundled, copy `.env.example` to `.env`, set two
-base64 32-byte AES keys, and run `docker compose up --build`.
+For a no-setup run with MySQL bundled, copy `backend/.env.example` to
+`backend/.env`, set two base64 32-byte AES keys
+(`openssl rand -base64 32`), and run `docker compose up --build`. The
+docker profile enforces `Secure` cookies; for local HTTP development the
+default profile keeps `Secure=false` so the session cookie still flows.
 
 ### Frontend
 
@@ -126,28 +213,56 @@ npm run dev
 # → http://localhost:5173
 ```
 
-The frontend proxies `/api` to the backend; `npm run build` produces a static
-bundle.
+The frontend proxies `/api` to the backend; `npm run build` produces a
+static bundle.
 
 ### Tests
 
 ```bash
-cd backend && mvn -q test
+cd backend  && mvn -q test
 cd frontend && npm run build
 ```
 
-## 9. UI
+The backend test pack includes access-control checks (sender cannot
+decrypt, cross-receiver access blocked, HELD messages cannot decrypt),
+admin-plaintext checks (no admin endpoint returns plaintext), rate-limit
+behavior (HTTP 429 + `Retry-After` + `RATE_LIMIT_BLOCKED` audit), and
+connection-security evaluation (`STABLE` / `FIRST_SEEN` / `ANOMALOUS`).
 
-The React frontend is themed as a cyber command center:
+## 10. UI at a glance
 
-- **Sender / Receiver console** — pick a mode, pick a CPHS puzzle type, see the requested vs enforced mode, the risk meter, the recovery state, and the puzzle arena (per-type UI, timer bar, attempt dots, success/failure animations).
-- **Simulation** — animated attack/defense/recovery battlefield with live KPIs and a system-pressure tile.
-- **Admin SOC** — global threat slider, system-pressure card, network status map, live alert feed (critical events highlighted), held-messages and users-at-risk lists. Admin never sees plaintext.
+The React frontend is themed as a dark cyber command center:
 
-## 10. Limitations (honest)
+- **Sender console** — security loadout chip group (mode + puzzle + tier),
+  requested vs enforced mode shown side by side with a step-up indicator,
+  risk reasons after send, and a recovery plan card with concrete next
+  steps.
+- **Receiver console** — challenge arena per puzzle type, timer bar,
+  attempt dots, success/failure animations, recovery plan after a failed
+  burst or admin hold.
+- **Admin SOC** — global threat slider, system-pressure card, network
+  status map, live alert feed, suspicious-session feed, held-messages
+  cards (release in one click), users-at-risk cards (reset counters),
+  and the recovery playbook (every state + its next step). Plaintext is
+  never rendered.
+- **Battlefield simulation** — animated attack/defense/recovery loop with
+  live KPIs and a system-pressure tile bound to the backend.
 
-- Puzzle types are intentionally **simplified** (POW, simple arithmetic, base64, basic sequences). They illustrate the gating mechanism, not full hardness arguments.
-- The adaptive policy is **heuristic** — buckets of risk + threat level. There is no SPE / Nash solver behind it.
-- The simulator is **abstracted**: graph attacks, budgets, and "user effort" are proxies. Good for relative comparisons inside the project, weak for absolute claims.
-- "Static / Layered / Challenge / Adaptive" labels are mapping conventions for exposition, not citations of specific external systems.
-- Results above are one reproducible scenario, not a benchmark suite; different seeds, sizes, or strategies can shift which mode "wins".
+## 11. Limitations (honest)
+
+- Puzzle types are intentionally **simplified** (POW, simple arithmetic,
+  base64, basic sequences). They illustrate the gating mechanism, not
+  full hardness arguments.
+- The adaptive policy is **heuristic** — buckets of risk + threat level.
+  There is no SPE / Nash solver behind it.
+- The simulator is **abstracted**: graph attacks, budgets, and "user
+  effort" are proxies. Good for relative comparisons inside the project,
+  weak for absolute claims.
+- "Static / Layered / Challenge / Adaptive" labels are mapping conventions
+  for exposition, not citations of specific external systems.
+- The connection security check uses an IP+User-Agent fingerprint as a
+  weak signal; it is intentionally not bound into key derivation, so it
+  can flag suspicious sessions without breaking the messaging flow when
+  someone simply moves networks.
+- Results above are one reproducible scenario, not a benchmark suite;
+  different seeds, sizes, or strategies can shift which mode "wins".
