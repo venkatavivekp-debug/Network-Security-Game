@@ -290,6 +290,17 @@ public class MessageService {
                 .orElseThrow(() -> new ResourceNotFoundException("Message not found for user: " + id));
     }
 
+    /**
+     * Returns a participant-scoped summary with all crypto material redacted.
+     * The participant scope means cross-receiver and cross-sender ids surface
+     * the same NotFound shape as a missing id.
+     */
+    @Transactional(readOnly = true)
+    public MessageSummaryResponse getSummaryForParticipant(Long id, String username) {
+        Message message = getByIdForUser(id, username);
+        return toSummaryResponse(message);
+    }
+
     @Transactional
     public MessageDecryptResponse decryptMessage(Long messageId, String receiverUsername) {
         if (messageId == null || messageId <= 0) {
@@ -413,9 +424,35 @@ public class MessageService {
         RecoveryPolicyService.RecoveryPolicy policy = recoveryPolicyService.policyFor(state);
         response.setRecoverySummary(policy.summary());
         response.setRecoveryNextSteps(policy.nextSteps());
-        response.setMetadata(message.getMetadata());
+        // Redact crypto material from the raw metadata. The receiver decrypt flow
+        // reads the stored entity directly; the API contract only exposes profile
+        // labels, never wrappedKey/targetHash/challenge/salts.
+        response.setMetadata(redactMetadata(message.getMetadata()));
         response.setCreatedAt(message.getCreatedAt());
         return response;
+    }
+
+    /**
+     * Whitelist a minimal set of safe fields from the encryption metadata blob.
+     * The blob itself is server-side state that contains crypto gating material
+     * (wrappedKey, targetHash, salts) which must not leak through public APIs.
+     */
+    private String redactMetadata(String metadataJson) {
+        if (metadataJson == null || metadataJson.isBlank()) {
+            return null;
+        }
+        try {
+            Map<String, Object> parsed = objectMapper.readValue(metadataJson, new TypeReference<>() {});
+            Map<String, Object> safe = new java.util.LinkedHashMap<>();
+            for (String key : List.of("profile", "visibility", "puzzleType", "maxIterations", "version")) {
+                if (parsed.containsKey(key)) {
+                    safe.put(key, parsed.get(key));
+                }
+            }
+            return safe.isEmpty() ? null : objectMapper.writeValueAsString(safe);
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     private String buildReceiverWarning(Message message) {

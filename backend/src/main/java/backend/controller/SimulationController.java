@@ -77,8 +77,12 @@ public class SimulationController {
 
     @PostMapping("/run")
     @PreAuthorize("hasAnyRole('SENDER','RECEIVER')")
-    public ResponseEntity<ApiSuccessResponse<SimulationRunResponse>> run(@Valid @RequestBody SimulationRunRequest request, HttpServletRequest httpRequest) {
-        AlgorithmType algorithmType = resolveAlgorithmType(request);
+    public ResponseEntity<ApiSuccessResponse<SimulationRunResponse>> run(
+            @Valid @RequestBody SimulationRunRequest request,
+            org.springframework.security.core.Authentication authentication,
+            HttpServletRequest httpRequest
+    ) {
+        AlgorithmType algorithmType = resolveAlgorithmType(request, authentication);
 
         SimulationResult result = gameSimulationService.runSimulation(
                 request.getNumNodes(),
@@ -411,9 +415,11 @@ public class SimulationController {
         return '"' + escaped + '"';
     }
 
-    private AlgorithmType resolveAlgorithmType(SimulationRunRequest request) {
+    private AlgorithmType resolveAlgorithmType(SimulationRunRequest request, org.springframework.security.core.Authentication authentication) {
         if (request.getMessageId() != null) {
-            Message message = messageService.getById(request.getMessageId());
+            // Participant-scoped lookup so a sender or receiver cannot run a
+            // simulation against an arbitrary message id and learn its mode.
+            Message message = messageService.getByIdForUser(request.getMessageId(), authentication.getName());
             return message.getAlgorithmType();
         }
 
