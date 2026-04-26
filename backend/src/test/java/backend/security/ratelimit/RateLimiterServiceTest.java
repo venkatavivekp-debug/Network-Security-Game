@@ -8,7 +8,7 @@ class RateLimiterServiceTest {
 
     @Test
     void shouldThrowWhenLimitExceeded() {
-        RateLimiterService service = new RateLimiterService();
+        RateLimiterService service = new RateLimiterService(new InMemoryRateLimiterBackend());
         String key = "k1";
 
         // capacity 1, no refill in test window

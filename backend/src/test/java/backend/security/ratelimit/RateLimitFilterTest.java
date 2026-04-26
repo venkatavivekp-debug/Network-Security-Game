@@ -30,7 +30,7 @@ class RateLimitFilterTest {
 
     @Test
     void exhaustingLoginBucketShouldReturn429AndAuditBlocked() throws Exception {
-        RateLimiterService limiter = new RateLimiterService();
+        RateLimiterService limiter = new RateLimiterService(new InMemoryRateLimiterBackend());
         AuditService audit = mock(AuditService.class);
         ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
         RateLimitFilter filter = new RateLimitFilter(limiter, new RequestContextUtil(), mapper, audit);
@@ -68,7 +68,7 @@ class RateLimitFilterTest {
 
     @Test
     void firstFewRequestsShouldNotBe429() throws Exception {
-        RateLimiterService limiter = new RateLimiterService();
+        RateLimiterService limiter = new RateLimiterService(new InMemoryRateLimiterBackend());
         AuditService audit = mock(AuditService.class);
         ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
         RateLimitFilter filter = new RateLimitFilter(limiter, new RequestContextUtil(), mapper, audit);

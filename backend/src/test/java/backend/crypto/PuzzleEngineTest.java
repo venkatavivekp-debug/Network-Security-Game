@@ -153,16 +153,23 @@ class PuzzleEngineTest {
     }
 
     private static long inferNext(String challenge) {
-        // Format: "a, b, c, d, ?"
+        // Format: "a, b, c, d, ?". Check arithmetic with all three differences,
+        // then geometric with all three ratios, then Fibonacci-style. Using
+        // every visible difference disambiguates Fibonacci starts whose first
+        // two diffs happen to match an arithmetic step (e.g. 1,2,3,5,...).
         String stripped = challenge.replace(", ?", "");
         String[] parts = stripped.split(", ");
         long[] seq = Arrays.stream(parts).mapToLong(Long::parseLong).toArray();
         long d1 = seq[1] - seq[0];
         long d2 = seq[2] - seq[1];
-        if (d1 == d2) {
+        long d3 = seq[3] - seq[2];
+        if (d1 == d2 && d2 == d3) {
             return seq[3] + d1;
         }
-        if (seq[0] != 0 && seq[1] / seq[0] == seq[2] / seq[1]) {
+        if (seq[0] != 0 && seq[1] != 0 && seq[2] != 0
+                && seq[1] % seq[0] == 0 && seq[2] % seq[1] == 0 && seq[3] % seq[2] == 0
+                && seq[1] / seq[0] == seq[2] / seq[1]
+                && seq[2] / seq[1] == seq[3] / seq[2]) {
             return seq[3] * (seq[1] / seq[0]);
         }
         return seq[3] + seq[2];
