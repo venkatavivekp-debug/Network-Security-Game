@@ -3,6 +3,7 @@ import type {
   AdminConfirmationStatus,
   AdminRiskPolicyResponse,
   AuditEventView,
+  ExternalThreatSummary,
   HeldMessageView,
   RecoveryPolicyEntry,
   SystemPressureResponse,
@@ -25,6 +26,8 @@ export const adminApi = {
   riskPolicy: () => apiRequest<AdminRiskPolicyResponse>("/admin/risk-policy", { method: "GET" }),
   threatLevel: () => apiRequest<{ attackIntensity01: number }>("/admin/threat-level", { method: "GET" }),
   systemPressure: () => apiRequest<SystemPressureResponse>("/admin/system-pressure", { method: "GET" }),
+  externalThreats: () =>
+    apiRequest<ExternalThreatSummary>("/admin/external-threats", { method: "GET" }),
   confirmationStatus: () =>
     apiRequest<AdminConfirmationStatus>("/admin/confirmation-status", { method: "GET" }),
   confirmAction: (password: string) =>

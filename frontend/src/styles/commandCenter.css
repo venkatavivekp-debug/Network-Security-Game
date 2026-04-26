@@ -1725,3 +1725,126 @@ body {
   font-size: 12px;
   line-height: 1.5;
 }
+
+/* External Threat Protection panel */
+.cc-threat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.cc-threat-stat {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 2px;
+}
+
+.cc-threat-stat--alert {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.cc-threat-stat__value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--cc-fg, #e6f1ff);
+  letter-spacing: 0.01em;
+}
+
+.cc-threat-stat__label {
+  font-size: 11px;
+  color: var(--cc-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.cc-threat-events {
+  margin-top: 12px;
+  display: grid;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.cc-threat-event {
+  display: grid;
+  grid-template-columns: 100px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+}
+
+.cc-threat-event__actor {
+  color: var(--cc-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cc-threat-event__time {
+  color: var(--cc-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  text-align: center;
+}
+
+.cc-tag--danger {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fca5a5;
+}
+
+.cc-tag--warn {
+  background: rgba(246, 166, 9, 0.10);
+  border-color: rgba(246, 166, 9, 0.4);
+  color: #fcd34d;
+}
+
+.cc-tag--muted {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--cc-muted);
+}
+
+.cc-tag--ok {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.4);
+  color: #86efac;
+}
+
+/* OWASP-aligned protection summary chip row */
+.cc-owasp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.cc-owasp-chip {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.08);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  color: #93c5fd;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 700;
+}

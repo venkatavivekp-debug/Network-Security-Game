@@ -109,6 +109,27 @@ export interface AdminRiskPolicyResponse {
   limitations: string[];
 }
 
+export interface ExternalThreatEvent {
+  id: number;
+  eventType: string;
+  actor: string | null;
+  createdAt: string;
+}
+
+export interface ExternalThreatSummary {
+  windowMinutes: number;
+  blockedRequests: number;
+  counters: {
+    rateLimitBlocked: number;
+    forbiddenAccess: number;
+    validationRejected: number;
+    sessionAnomaly: number;
+    puzzleSolveFailure: number;
+    loginFailure: number;
+  };
+  recent: ExternalThreatEvent[];
+}
+
 export interface MessageSummaryResponse {
   id: number;
   senderUsername: string;

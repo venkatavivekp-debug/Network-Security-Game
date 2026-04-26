@@ -14,6 +14,7 @@ import { ThreatBanner } from "../components/cyber/ThreatBanner";
 import { NetworkViz, type NetworkEdge, type NetworkNode } from "../components/cyber/NetworkViz";
 import { AdminStepUpModal } from "../components/cyber/AdminStepUpModal";
 import { RiskPolicyPanel } from "../components/cyber/RiskPolicyPanel";
+import { ExternalThreatPanel } from "../components/cyber/ExternalThreatPanel";
 
 const ALERT_TONE: Record<string, string> = {
   ADAPTIVE_ESCALATION: "tone-attack",
@@ -330,6 +331,8 @@ export function AdminPage() {
               </div>
             </div>
           </div>
+
+          <ExternalThreatPanel />
 
           <RiskPolicyPanel />
 

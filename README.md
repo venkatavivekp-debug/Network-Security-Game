@@ -342,6 +342,86 @@ The React frontend is themed as a dark cyber command center:
 - **Battlefield simulation** — animated attack/defense/recovery loop with
   live KPIs and a system-pressure tile bound to the backend.
 
+## 10a. External threat protection (OWASP-aligned controls)
+
+These controls are aimed at outside web/API threats — what the system does
+when an unauthenticated or low-privilege actor pokes at the edge. The design
+goal is *engineering value*, not OWASP marketing: every row below points to
+real code and at least one test.
+
+### Control summary
+
+| Concern | Control | Where to look |
+|---|---|---|
+| Object-level authorization | `AccessPolicyService` (participant-scoped lookups) | `security/AccessPolicyService.java`, `MessageController#getById`, `AttackController#simulate` |
+| Object-property exposure | Safe DTOs + redacted `metadata` (no `wrappedKey` / `targetHash` / `challenge` to senders) | `MessageService#redactMetadata`, `dto/ResponseExposureTest` |
+| Input validation | `@Valid` DTOs + bounded `@Min/@Max/@Pattern`, clean 400s for malformed JSON | `dto/*Request.java`, `GlobalExceptionHandler` |
+| CSRF (compensating control) | `X-Requested-With: XMLHttpRequest` required on every mutating call; `SameSite=Lax` cookies; locked-down CORS | `security/CustomHeaderCsrfFilter.java` |
+| Security headers | CSP, `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Permissions-Policy`, `Cache-Control: no-store` for sensitive paths | `security/SecurityHeadersFilter.java` |
+| CORS | Strict allow-list via `app.security.cors.allowed-origins`; never wildcard with credentials | `security/SecurityConfig#corsConfigurationSource` |
+| Rate limiting | Token-bucket on login / register / send / puzzle solve / admin actions; clean 429 + `Retry-After` | `security/ratelimit/RateLimitFilter.java` |
+| Body / payload bounds | `spring.servlet.multipart.max-request-size=2MB`; DTO `@Size`; simulation/eval `@Min`/`@Max` | `application.properties`, `dto/SimulationRunRequest.java` |
+| Audit & monitoring | `FORBIDDEN_ACCESS`, `VALIDATION_REJECTED`, `RATE_LIMIT_BLOCKED`, `SESSION_ANOMALY` recorded with hashed IP/UA | `audit/AuditEventType.java`, `GlobalExceptionHandler`, `ApiAccessDeniedHandler` |
+| Error leakage | `server.error.include-stacktrace=never`, `include-message=never`; `ApiErrorResponse.details` only | `application.properties`, `GlobalExceptionHandler` |
+| External-threat SOC card | `/admin/external-threats` (counts + recent slice) + frontend `ExternalThreatPanel` | `security/ExternalThreatSummaryService.java`, `components/cyber/ExternalThreatPanel.tsx` |
+
+### OWASP Top 10 mapping
+
+| Risk | What it means here | Control | Test |
+|---|---|---|---|
+| **A01 Broken Access Control** | Sender / receiver / admin should each see only what they're authorized to. | `@PreAuthorize` + `AccessPolicyService` participant scope; admin-step-up for sensitive admin actions | `MessageAccessControlTest`, `AccessPolicyServiceTest`, `AdminControllerTest` |
+| **A02 Cryptographic Failures** | Plaintext leaks; weak crypto; hard-coded keys. | AES-GCM with random IV; AES-256 keys from env; no plaintext persisted; CPHS metadata stays server-side | `MessageAccessControlTest` (admin never sees plaintext) |
+| **A03 Injection** | Hostile JSON / params crashing parsers or running SQL. | Bean Validation everywhere; JPA repositories only; clean 400 for `HttpMessageNotReadableException` | `GlobalExceptionHandlerTest` |
+| **A04 Insecure Design** | No recovery path; silent failures; flag-only "lock the user". | `RecoveryPolicyService` covers every `RecoveryState`; no dead ends; risk levels documented at `/admin/risk-policy` | `MessageAccessControlTest#recoveryPolicyServiceCoversEveryRecoveryStateWithoutDeadEnds` |
+| **A05 Security Misconfiguration** | Wildcards, default secrets, error leakage. | Strict CORS allow-list; CSP/headers filter; `include-stacktrace=never`; missing crypto keys fail-fast outside dev | `SecurityHeadersFilterTest`, env-validator startup check |
+| **A07 Identification and Authentication Failures** | Session fixation, credential stuffing. | Session ID rotation on login; SameSite cookies; rate-limit on `/auth/login` and `/auth/register`; admin step-up | `RateLimitFilterTest`, `AdminStepUpServiceTest` |
+| **A09 Security Logging and Monitoring Failures** | Silent abuse. | All forbidden / validation / 429 / session anomaly events emit hashed-context audit records, surfaced in `/admin/external-threats` | `ExternalThreatSummaryServiceTest`, `GlobalExceptionHandlerTest` |
+
+### OWASP API Security mapping
+
+| Risk | Control | Test |
+|---|---|---|
+| **API1 Broken Object Level Authorization** | Participant-scoped lookups for `/message/{id}`, `/attack/simulate/{id}`, `/simulation/run` (when `messageId` is provided). Cross-receiver / cross-sender ids surface the same NotFound shape. | `AccessPolicyServiceTest#requireParticipantThrowsNotFoundForCrossReceiver`, `MessageAccessControlTest` |
+| **API2 Broken Authentication** | BCrypt, session ID rotation, login rate-limit, admin step-up | `RateLimitFilterTest`, `AdminStepUpServiceTest` |
+| **API3 Broken Object Property Level Authorization** | `MessageSummaryResponse` strips `wrappedKey`/`targetHash`/`challenge` from metadata; admin held-messages list only shows safe metadata | `ResponseExposureTest`, `AdminControllerTest` |
+| **API4 Unrestricted Resource Consumption** | DTO bounds + Spring multipart caps + rate-limit buckets; clean 429 with `Retry-After` | `RateLimitFilterTest`, simulation/eval DTO `@Max` |
+| **API5 Broken Function Level Authorization** | Method security + admin step-up + custom-header CSRF gate | `AdminControllerTest`, `CustomHeaderCsrfFilterTest` |
+
+### CSRF posture (Option B, documented)
+
+We deliberately keep the API stateless rather than threading a Spring CSRF
+token through the React client. The compensating controls are:
+
+1. `X-Requested-With: XMLHttpRequest` required on every mutating request
+   (`CustomHeaderCsrfFilter`). Browsers won't let cross-origin HTML forms
+   set this header without a preflight.
+2. `SameSite=Lax` session cookie (configurable via `APP_COOKIE_SAME_SITE`).
+3. Strict CORS allow-list — explicit origins, never `*` with credentials.
+4. JSON-only mutating endpoints (`Content-Type: application/json`).
+5. Admin step-up for the few mutating actions that matter most.
+
+Honest limitation: this stack is solid against the common CSRF / cross-site
+HTML form vector. It is not a substitute for a full anti-CSRF token if you
+later host browser content from multiple origins under the same backend.
+
+### CORS posture
+
+`SecurityConfig#corsConfigurationSource` reads `app.security.cors.allowed-origins`
+(comma-separated). Defaults are dev-only (`http://localhost:5173`, etc.).
+Production deployments override `APP_CORS_ALLOWED_ORIGINS` to the public
+frontend origin(s); credentials are allowed but the origin list is never
+wildcarded.
+
+### What this does NOT do (honest)
+
+- No WAF; we recommend fronting with one in production.
+- The custom-header CSRF gate stops cross-origin HTML POSTs but does **not**
+  defend against an attacker who already has cross-site script execution on
+  the frontend origin (XSS). The CSP narrows that surface but does not
+  eliminate it.
+- Audit logs are stored in the same database as the application data; in a
+  real deployment they should fan out to an append-only sink (see §11).
+
 ## 11. Production hardening recommendations
 
 If you wanted to take this beyond a research sandbox:

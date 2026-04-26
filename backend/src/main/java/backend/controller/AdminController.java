@@ -23,6 +23,7 @@ import backend.repository.MessageRepository;
 import backend.repository.PuzzleRepository;
 import backend.repository.UserBehaviorProfileRepository;
 import backend.security.AdminStepUpService;
+import backend.security.ExternalThreatSummaryService;
 import backend.security.RecoveryPolicyService;
 import backend.service.UserService;
 import backend.util.ApiResponseUtil;
@@ -64,6 +65,7 @@ public class AdminController {
     private final RecoveryPolicyService recoveryPolicyService;
     private final AdminStepUpService adminStepUpService;
     private final AdaptiveRiskPolicyService adaptiveRiskPolicyService;
+    private final ExternalThreatSummaryService externalThreatSummaryService;
 
     public AdminController(
             UserService userService,
@@ -79,7 +81,8 @@ public class AdminController {
             SystemPressureService systemPressureService,
             RecoveryPolicyService recoveryPolicyService,
             AdminStepUpService adminStepUpService,
-            AdaptiveRiskPolicyService adaptiveRiskPolicyService
+            AdaptiveRiskPolicyService adaptiveRiskPolicyService,
+            ExternalThreatSummaryService externalThreatSummaryService
     ) {
         this.userService = userService;
         this.adaptiveSecurityService = adaptiveSecurityService;
@@ -95,6 +98,22 @@ public class AdminController {
         this.recoveryPolicyService = recoveryPolicyService;
         this.adminStepUpService = adminStepUpService;
         this.adaptiveRiskPolicyService = adaptiveRiskPolicyService;
+        this.externalThreatSummaryService = externalThreatSummaryService;
+    }
+
+    /**
+     * Aggregated outside-threat counters and a small slice of recent
+     * security-relevant audit events for the admin SOC card. All sensitive
+     * fields are hashed at write time so this never leaks raw IPs / fingerprints.
+     */
+    @GetMapping("/external-threats")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiSuccessResponse<Map<String, Object>>> externalThreats(HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(ApiResponseUtil.success(
+                "External threat summary fetched",
+                httpRequest.getRequestURI(),
+                externalThreatSummaryService.summary()
+        ));
     }
 
     /**
@@ -308,7 +327,10 @@ public class AdminController {
     @PostMapping("/threat-level")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiSuccessResponse<Map<String, Object>>> setThreatLevel(
-            @RequestParam("attackIntensity01") double attackIntensity01,
+            @RequestParam("attackIntensity01")
+            @jakarta.validation.constraints.DecimalMin(value = "0.0", message = "attackIntensity01 must be >= 0")
+            @jakarta.validation.constraints.DecimalMax(value = "1.0", message = "attackIntensity01 must be <= 1")
+            double attackIntensity01,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {

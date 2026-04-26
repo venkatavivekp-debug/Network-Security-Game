@@ -209,7 +209,8 @@ class AdminControllerTest {
                     systemPressureService,
                     new RecoveryPolicyService(),
                     adminStepUpService,
-                    new AdaptiveRiskPolicyService(new AdaptiveSecurityProperties())
+                    new AdaptiveRiskPolicyService(new AdaptiveSecurityProperties()),
+                    new backend.security.ExternalThreatSummaryService(auditEventRepository, 60)
             );
         }
 
