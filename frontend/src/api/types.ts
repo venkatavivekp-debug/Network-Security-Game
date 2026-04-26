@@ -48,10 +48,13 @@ export interface LoginRequest {
   password: string;
 }
 
+export type PuzzleType = "POW_SHA256" | "ARITHMETIC" | "ENCODED" | "PATTERN";
+
 export interface MessageSendRequest {
   receiverUsername: string;
   content: string;
   algorithmType: AlgorithmType;
+  puzzleType?: PuzzleType;
 }
 
 export interface MessageSendResponse {
@@ -93,15 +96,29 @@ export interface MessageSummaryResponse {
 
 export interface PuzzleChallengeResponse {
   messageId: number;
-  puzzleType: string;
+  puzzleType: PuzzleType;
   question: string;
   challenge: string;
-  targetHash: string;
+  targetHash: string | null;
   maxIterations: number;
   attemptsAllowed: number;
   attemptsUsed: number;
   expiresAt: string | null;
   solved: boolean;
+}
+
+export interface SystemPressureResponse {
+  pressure: number;
+  level: "CALM" | "WATCH" | "ELEVATED" | "CRITICAL";
+  details: {
+    threatLevel: number;
+    recentPuzzleAttempts: number;
+    recentPuzzleFailures: number;
+    recentEscalations: number;
+    recentAdminActions: number;
+    usersAtRisk: number;
+    puzzleFailureRate: number;
+  };
 }
 
 export interface PuzzleSolveResponse {

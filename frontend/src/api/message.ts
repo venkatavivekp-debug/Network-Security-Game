@@ -15,12 +15,16 @@ export const messageApi = {
   decrypt: (id: number) => apiRequest<MessageDecryptResponse>(`/message/decrypt/${id}`, { method: "POST" }),
 };
 
+export interface PuzzleSolvePayload {
+  nonce?: number;
+  answer?: string;
+}
+
 export const puzzleApi = {
   challenge: (id: number) => apiRequest<PuzzleChallengeResponse>(`/puzzle/${id}/challenge`, { method: "GET" }),
-  solve: (id: number, nonce: number) =>
+  solve: (id: number, payload: PuzzleSolvePayload) =>
     apiRequest<PuzzleSolveResponse>(`/puzzle/${id}/solve`, {
       method: "POST",
-      body: JSON.stringify({ nonce }),
+      body: JSON.stringify(payload),
     }),
 };
-

@@ -1,0 +1,329 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ApiError } from "../../api/client";
+import { puzzleApi } from "../../api/message";
+import type { PuzzleChallengeResponse, PuzzleType } from "../../api/types";
+
+type Outcome = "idle" | "success" | "failure";
+
+const TYPE_PILL_CLASS: Record<PuzzleType, string> = {
+  POW_SHA256: "is-pow",
+  ARITHMETIC: "is-arith",
+  ENCODED: "is-encoded",
+  PATTERN: "is-pattern",
+};
+
+const TYPE_LABEL: Record<PuzzleType, string> = {
+  POW_SHA256: "HASH PUZZLE",
+  ARITHMETIC: "ARITHMETIC",
+  ENCODED: "ENCODED MESSAGE",
+  PATTERN: "PATTERN MATCH",
+};
+
+const TYPE_TAGLINE: Record<PuzzleType, string> = {
+  POW_SHA256: "Run a SHA-256 nonce search to unlock the message key.",
+  ARITHMETIC: "Evaluate the math expression to derive the unlock key.",
+  ENCODED: "Decode the obfuscated phrase to recover the message key.",
+  PATTERN: "Continue the sequence to unlock the message key.",
+};
+
+export function PuzzleArena({
+  challenge,
+  onSolved,
+  onNotice,
+}: {
+  challenge: PuzzleChallengeResponse | null;
+  onSolved: () => Promise<void> | void;
+  onNotice: (s: string | null) => void;
+}) {
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [solving, setSolving] = useState(false);
+  const [outcome, setOutcome] = useState<Outcome>("idle");
+  const [outcomeMessage, setOutcomeMessage] = useState<string | null>(null);
+  const [answer, setAnswer] = useState("");
+
+  const startedAt = useRef<number>(Date.now());
+
+  useEffect(() => {
+    startedAt.current = Date.now();
+    setOutcome("idle");
+    setOutcomeMessage(null);
+    setAnswer("");
+    setProgress(0);
+  }, [challenge?.messageId, challenge?.puzzleType]);
+
+  const remainingSeconds = useExpiryCountdown(challenge?.expiresAt ?? null);
+
+  const attemptsLeft = challenge ? Math.max(0, challenge.attemptsAllowed - challenge.attemptsUsed) : 0;
+
+  const expiryPill = useMemo(() => {
+    if (remainingSeconds == null) return null;
+    let cls = "";
+    if (remainingSeconds < 30) cls = "is-crit";
+    else if (remainingSeconds < 90) cls = "is-warn";
+    return (
+      <span className={`cc-puzzle-timer ${cls}`}>{formatTimer(remainingSeconds)}</span>
+    );
+  }, [remainingSeconds]);
+
+  if (!challenge) {
+    return <div className="cc-empty">Loading puzzle…</div>;
+  }
+
+  if (challenge.solved) {
+    return (
+      <div className="cc-puzzle">
+        <div className="cc-puzzle-banner is-success">
+          Puzzle solved. The message key has been recovered — you may decrypt the message now.
+        </div>
+      </div>
+    );
+  }
+
+  const expired = remainingSeconds != null && remainingSeconds <= 0;
+  const lockedOut = attemptsLeft <= 0;
+
+  async function submit(payload: { nonce?: number; answer?: string }) {
+    if (!challenge) return;
+    setSolving(true);
+    setOutcome("idle");
+    setOutcomeMessage(null);
+    onNotice(null);
+    try {
+      const res = await puzzleApi.solve(challenge.messageId, payload);
+      if (res.solved) {
+        const elapsed = ((Date.now() - startedAt.current) / 1000).toFixed(1);
+        setOutcome("success");
+        setOutcomeMessage(`Unlock granted in ${elapsed}s. Decrypt available.`);
+        onNotice("Puzzle solved.");
+        await onSolved();
+      } else {
+        setOutcome("failure");
+        setOutcomeMessage(`Rejected. ${res.attemptsAllowed - res.attemptsUsed} attempt(s) left.`);
+        onNotice(null);
+        await onSolved();
+      }
+    } catch (err) {
+      setOutcome("failure");
+      const msg = err instanceof ApiError ? err.message : "Server rejected the answer.";
+      setOutcomeMessage(msg);
+      onNotice(null);
+      // Still refresh so attempt counters update
+      try { await onSolved(); } catch { /* noop */ }
+    } finally {
+      setSolving(false);
+    }
+  }
+
+  async function autoSolveHash() {
+    if (!challenge) return;
+    const target = challenge.targetHash;
+    if (!target) {
+      setOutcome("failure");
+      setOutcomeMessage("Hash puzzle is missing target hash.");
+      return;
+    }
+    setRunning(true);
+    setProgress(0);
+    setOutcome("idle");
+    setOutcomeMessage(null);
+    onNotice(null);
+    try {
+      const max = challenge.maxIterations;
+      const checkpoint = Math.max(1, Math.floor(max / 60));
+      for (let n = 0; n < max; n++) {
+        const h = await sha256Hex(`${challenge.challenge}:${n}`);
+        if (h === target) {
+          setProgress(100);
+          await submit({ nonce: n });
+          return;
+        }
+        if (n % checkpoint === 0) {
+          setProgress(Math.min(99, Math.floor((n / max) * 100)));
+          await new Promise((r) => setTimeout(r, 0));
+        }
+      }
+      setOutcome("failure");
+      setOutcomeMessage("No valid nonce found within the iteration budget.");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const pillClass = TYPE_PILL_CLASS[challenge.puzzleType] ?? "is-pow";
+  const headerLabel = TYPE_LABEL[challenge.puzzleType] ?? challenge.puzzleType;
+  const tagline = TYPE_TAGLINE[challenge.puzzleType] ?? "";
+
+  return (
+    <div className="cc-puzzle" aria-label={`Cryptographic puzzle: ${headerLabel}`}>
+      <div className="cc-puzzle-header">
+        <div className="cc-puzzle-title">Cryptographic challenge</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span className={`cc-puzzle-type-pill ${pillClass}`}>{headerLabel}</span>
+          {expiryPill}
+        </div>
+      </div>
+
+      <div className="cc-puzzle-question">{challenge.question || tagline}</div>
+
+      {challenge.puzzleType === "POW_SHA256" ? (
+        <>
+          <div className="cc-puzzle-challenge">{challenge.challenge}</div>
+          <div className="cc-puzzle-progress" aria-hidden>
+            <span style={{ width: `${progress}%` }} />
+          </div>
+          <div className="cc-puzzle-actions">
+            <button
+              className="cc-btn"
+              type="button"
+              onClick={() => void autoSolveHash()}
+              disabled={running || solving || lockedOut || expired}
+            >
+              {running ? `Searching… ${progress}%` : "Run nonce search"}
+            </button>
+            <span style={{ fontSize: 12, color: "var(--cc-muted)" }}>
+              max iterations {challenge.maxIterations.toLocaleString()}
+            </span>
+          </div>
+        </>
+      ) : challenge.puzzleType === "ARITHMETIC" ? (
+        <>
+          <div className="cc-puzzle-challenge">{challenge.challenge}</div>
+          <ManualAnswerForm
+            placeholder="Enter integer result"
+            inputMode="numeric"
+            answer={answer}
+            setAnswer={setAnswer}
+            disabled={solving || lockedOut || expired}
+            onSubmit={() => void submit({ answer: answer.trim() })}
+          />
+        </>
+      ) : challenge.puzzleType === "ENCODED" ? (
+        <>
+          <div className="cc-puzzle-challenge" style={{ fontSize: 14 }}>{challenge.challenge}</div>
+          <ManualAnswerForm
+            placeholder="Enter the decoded phrase"
+            answer={answer}
+            setAnswer={setAnswer}
+            disabled={solving || lockedOut || expired}
+            onSubmit={() => void submit({ answer: answer.trim() })}
+          />
+        </>
+      ) : challenge.puzzleType === "PATTERN" ? (
+        <>
+          <div className="cc-puzzle-challenge">{challenge.challenge}</div>
+          <ManualAnswerForm
+            placeholder="Enter the next value"
+            inputMode="numeric"
+            answer={answer}
+            setAnswer={setAnswer}
+            disabled={solving || lockedOut || expired}
+            onSubmit={() => void submit({ answer: answer.trim() })}
+          />
+        </>
+      ) : null}
+
+      <div className="cc-puzzle-meta">
+        <span className="cc-puzzle-attempts" aria-label={`attempts: ${challenge.attemptsUsed}/${challenge.attemptsAllowed}`}>
+          {Array.from({ length: challenge.attemptsAllowed }).map((_, i) => (
+            <span key={i} className={`cc-puzzle-dot ${i < challenge.attemptsUsed ? "is-used" : ""}`} />
+          ))}
+          <span style={{ marginLeft: 6 }}>{attemptsLeft}/{challenge.attemptsAllowed} left</span>
+        </span>
+        <span>
+          ID #{challenge.messageId} · type {challenge.puzzleType}
+        </span>
+      </div>
+
+      {outcome === "success" && outcomeMessage ? (
+        <div className="cc-puzzle-banner is-success">{outcomeMessage}</div>
+      ) : null}
+      {outcome === "failure" && outcomeMessage ? (
+        <div className="cc-puzzle-banner is-failure">{outcomeMessage}</div>
+      ) : null}
+      {expired ? (
+        <div className="cc-puzzle-banner is-failure">Challenge window expired. Ask the sender to re-issue.</div>
+      ) : null}
+      {lockedOut ? (
+        <div className="cc-puzzle-banner is-failure">No attempts remaining. Message moved to admin review.</div>
+      ) : null}
+    </div>
+  );
+}
+
+function ManualAnswerForm({
+  placeholder,
+  inputMode,
+  answer,
+  setAnswer,
+  disabled,
+  onSubmit,
+}: {
+  placeholder: string;
+  inputMode?: "numeric" | "text";
+  answer: string;
+  setAnswer: (s: string) => void;
+  disabled: boolean;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="cc-puzzle-actions">
+      <input
+        className="cc-input"
+        value={answer}
+        onChange={(e) => setAnswer(e.target.value)}
+        placeholder={placeholder}
+        inputMode={inputMode ?? "text"}
+        disabled={disabled}
+        style={{ flex: "1 1 200px", minWidth: 0 }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !disabled && answer.trim()) onSubmit();
+        }}
+      />
+      <button
+        className="cc-btn"
+        type="button"
+        onClick={onSubmit}
+        disabled={disabled || !answer.trim()}
+      >
+        Submit answer
+      </button>
+    </div>
+  );
+}
+
+function useExpiryCountdown(expiresAt: string | null): number | null {
+  const [remaining, setRemaining] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!expiresAt) {
+      setRemaining(null);
+      return;
+    }
+    const target = new Date(expiresAt).getTime();
+    const tick = () => {
+      const r = Math.max(0, Math.floor((target - Date.now()) / 1000));
+      setRemaining(r);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
+  return remaining;
+}
+
+function formatTimer(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const enc = new TextEncoder();
+  const buf = await crypto.subtle.digest("SHA-256", enc.encode(text));
+  const bytes = new Uint8Array(buf);
+  let out = "";
+  for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, "0");
+  return out;
+}

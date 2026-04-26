@@ -4,17 +4,25 @@ import type {
   MessageSendResponse,
   MessageSummaryResponse,
   PuzzleChallengeResponse,
+  PuzzleType,
   RecoveryState,
   RiskLevel,
+  SystemPressureResponse,
 } from "../api/types";
 import { ApiError } from "../api/client";
 import { messageApi, puzzleApi } from "../api/message";
+import { adminApi } from "../api/admin";
 import { useAuth } from "../state/auth/AuthProvider";
+import { PuzzleArena } from "../components/cyber/PuzzleArena";
+import { ThreatBanner } from "../components/cyber/ThreatBanner";
+import { RiskMeter } from "../components/cyber/RiskMeter";
+import { AttackTimeline, type PhaseStep } from "../components/cyber/AttackTimeline";
 
 export function MessagingPage() {
   const { user } = useAuth();
   const [mode, setMode] = useState<"send" | "inbox">("send");
   const [notice, setNotice] = useState<string | null>(null);
+  const [pressure, setPressure] = useState<SystemPressureResponse | null>(null);
 
   const canSend = user?.role === "SENDER";
   const canReceive = user?.role === "RECEIVER";
@@ -24,8 +32,27 @@ export function MessagingPage() {
     else setMode("send");
   }, [canReceive]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function tick() {
+      try {
+        const snap = await adminApi.systemPressure();
+        if (!cancelled) setPressure(snap);
+      } catch {
+        // best-effort polling; ignore failures
+      }
+    }
+    void tick();
+    const id = setInterval(tick, 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
   return (
     <div className="cc-page">
+      <ThreatBanner snapshot={pressure} />
       <section className="cc-surface" style={{ padding: 0 }}>
         <div className="cc-panel-header">
           <div className="cc-panel-title">Secure Messaging</div>
@@ -116,6 +143,7 @@ function SendPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: stri
   const [receiverUsername, setReceiverUsername] = useState("");
   const [content, setContent] = useState("");
   const [algorithmType, setAlgorithmType] = useState<AlgorithmType>("SHCS");
+  const [puzzleType, setPuzzleType] = useState<PuzzleType>("POW_SHA256");
   const [busy, setBusy] = useState(false);
   const [last, setLast] = useState<MessageSendResponse | null>(null);
 
@@ -123,7 +151,12 @@ function SendPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: stri
     onNotice(null);
     setBusy(true);
     try {
-      const res = await messageApi.send({ receiverUsername, content, algorithmType });
+      const res = await messageApi.send({
+        receiverUsername,
+        content,
+        algorithmType,
+        ...(algorithmType === "CPHS" ? { puzzleType } : {}),
+      });
       setLast(res);
       onNotice("Message stored securely.");
       setContent("");
@@ -146,14 +179,31 @@ function SendPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: stri
         <input className="cc-input" value={receiverUsername} onChange={(e) => setReceiverUsername(e.target.value)} disabled={!enabled || busy} />
       </label>
 
-      <label className="cc-label">
-        Algorithm
-        <select className="cc-select" value={algorithmType} onChange={(e) => setAlgorithmType(e.target.value as AlgorithmType)} disabled={!enabled || busy}>
-          <option value="NORMAL">NORMAL</option>
-          <option value="SHCS">SHCS</option>
-          <option value="CPHS">CPHS</option>
-        </select>
-      </label>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <label className="cc-label">
+          Algorithm
+          <select className="cc-select" value={algorithmType} onChange={(e) => setAlgorithmType(e.target.value as AlgorithmType)} disabled={!enabled || busy}>
+            <option value="NORMAL">NORMAL</option>
+            <option value="SHCS">SHCS</option>
+            <option value="CPHS">CPHS</option>
+          </select>
+        </label>
+
+        <label className="cc-label" style={{ opacity: algorithmType === "CPHS" ? 1 : 0.55 }}>
+          Puzzle type {algorithmType === "CPHS" ? "" : "(CPHS only)"}
+          <select
+            className="cc-select"
+            value={puzzleType}
+            onChange={(e) => setPuzzleType(e.target.value as PuzzleType)}
+            disabled={!enabled || busy || algorithmType !== "CPHS"}
+          >
+            <option value="POW_SHA256">HASH PUZZLE (SHA-256)</option>
+            <option value="ARITHMETIC">ARITHMETIC CHALLENGE</option>
+            <option value="ENCODED">ENCODED MESSAGE CHALLENGE</option>
+            <option value="PATTERN">PATTERN MATCH CHALLENGE</option>
+          </select>
+        </label>
+      </div>
 
       <label className="cc-label" style={{ textTransform: "none", letterSpacing: "0.02em" }}>
         Message content
@@ -178,6 +228,7 @@ function SendPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: stri
             <RiskBadge level={last.riskLevel} score={last.riskScore} />
             <StateBadge state={last.recoveryState} />
           </div>
+          <RiskMeter score={last.riskScore} level={last.riskLevel} />
           <div className="cc-result-row">
             <span>Requested mode</span>
             <span>{last.requestedAlgorithmType}</span>
@@ -232,6 +283,15 @@ function InboxPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: str
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 
+  async function loadPuzzle(id: number) {
+    try {
+      const refreshed = await puzzleApi.challenge(id);
+      setPuzzle(refreshed);
+    } catch {
+      setPuzzle(null);
+    }
+  }
+
   useEffect(() => {
     setPuzzle(null);
     setDecrypted(null);
@@ -239,10 +299,7 @@ function InboxPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: str
     if (selected?.algorithmType !== "CPHS") return;
     if (selected?.status === "UNLOCKED") return;
     if (selected?.recoveryState === "HELD" || selected?.recoveryState === "ADMIN_REVIEW_REQUIRED") return;
-    void puzzleApi
-      .challenge(selectedId)
-      .then(setPuzzle)
-      .catch(() => undefined);
+    void loadPuzzle(selectedId);
   }, [selectedId, selected?.algorithmType, selected?.status, selected?.recoveryState]);
 
   async function decrypt() {
@@ -349,20 +406,24 @@ function InboxPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: str
                 </span>
               </div>
 
+              <RiskMeter
+                score={selected.riskScore}
+                level={selected.riskLevel}
+                caption={selected.recoveryState ? RECOVERY_COPY[selected.recoveryState] : undefined}
+              />
+
+              <AttackTimeline steps={timelineFor(selected.recoveryState)} />
+
               {selected.warningMessage || selected.warning ? (
                 <div className="cc-notice">{selected.warningMessage ?? selected.warning}</div>
               ) : null}
-              {selected.recoveryState ? (
-                <div style={{ fontSize: 12, color: "var(--cc-muted)" }}>{RECOVERY_COPY[selected.recoveryState]}</div>
-              ) : null}
 
               {selected.algorithmType === "CPHS" && selected.status !== "UNLOCKED" ? (
-                <PuzzlePanel
+                <PuzzleArena
                   challenge={puzzle}
                   onSolved={async () => {
                     if (selectedId) {
-                      const refreshed = await puzzleApi.challenge(selectedId).catch(() => null);
-                      setPuzzle(refreshed);
+                      await loadPuzzle(selectedId);
                     }
                     await load();
                   }}
@@ -419,104 +480,58 @@ function InboxPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: str
   );
 }
 
-async function sha256Hex(text: string): Promise<string> {
-  const enc = new TextEncoder();
-  const buf = await crypto.subtle.digest("SHA-256", enc.encode(text));
-  const bytes = new Uint8Array(buf);
-  let out = "";
-  for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, "0");
-  return out;
-}
+function timelineFor(state: RecoveryState | null): PhaseStep[] {
+  const baseAttack: PhaseStep = {
+    phase: "attack",
+    title: "Attack vector",
+    sub: "Sender adopts a posture under risk pressure.",
+  };
+  const baseDefense: PhaseStep = {
+    phase: "defense",
+    title: "Defense gate",
+    sub: "Adaptive engine picks the enforced mode.",
+  };
+  const baseRecovery: PhaseStep = {
+    phase: "recovery",
+    title: "Recovery",
+    sub: "Receiver clears the challenge or admin releases.",
+  };
 
-function PuzzlePanel({
-  challenge,
-  onSolved,
-  onNotice,
-}: {
-  challenge: PuzzleChallengeResponse | null;
-  onSolved: () => Promise<void> | void;
-  onNotice: (s: string | null) => void;
-}) {
-  const [progress, setProgress] = useState(0);
-  const [running, setRunning] = useState(false);
-  const [solving, setSolving] = useState(false);
-
-  if (!challenge) {
-    return <div className="cc-empty">Loading puzzle…</div>;
+  switch (state) {
+    case "CHALLENGE_REQUIRED":
+    case "ESCALATED":
+      return [
+        baseAttack,
+        { ...baseDefense, active: true },
+        baseRecovery,
+      ];
+    case "HELD":
+    case "ADMIN_REVIEW_REQUIRED":
+    case "RECOVERY_IN_PROGRESS":
+      return [
+        baseAttack,
+        baseDefense,
+        { ...baseRecovery, active: true, sub: "Admin-supervised recovery in progress." },
+      ];
+    case "RECOVERED":
+      return [
+        baseAttack,
+        baseDefense,
+        { ...baseRecovery, active: true, sub: "Recovered through admin release." },
+      ];
+    case "FAILED":
+      return [
+        baseAttack,
+        baseDefense,
+        { ...baseRecovery, active: true, sub: "Puzzle expired or attempts exhausted." },
+      ];
+    case "NORMAL":
+    case null:
+    default:
+      return [
+        baseAttack,
+        baseDefense,
+        { ...baseRecovery, sub: "Idle — no recovery needed." },
+      ];
   }
-
-  if (challenge.solved) {
-    return <div className="cc-notice">Puzzle solved. You may decrypt the message now.</div>;
-  }
-
-  async function autoSolve() {
-    if (!challenge) return;
-    setRunning(true);
-    setProgress(0);
-    onNotice(null);
-    try {
-      const max = challenge.maxIterations;
-      const checkpoint = Math.max(1, Math.floor(max / 50));
-      for (let n = 0; n < max; n++) {
-        const h = await sha256Hex(`${challenge.challenge}:${n}`);
-        if (h === challenge.targetHash) {
-          await submitNonce(n);
-          return;
-        }
-        if (n % checkpoint === 0) {
-          setProgress(Math.min(99, Math.floor((n / max) * 100)));
-        }
-      }
-      onNotice("Could not find a valid nonce within the allowed iteration range.");
-    } catch (err) {
-      if (err instanceof ApiError) onNotice(err.message);
-      else onNotice("Puzzle solve failed");
-    } finally {
-      setRunning(false);
-    }
-  }
-
-  async function submitNonce(nonce: number) {
-    if (!challenge) return;
-    setSolving(true);
-    try {
-      await puzzleApi.solve(challenge.messageId, nonce);
-      onNotice("Puzzle solved. You may decrypt the message now.");
-      await onSolved();
-    } catch (err) {
-      if (err instanceof ApiError) onNotice(err.message);
-      else onNotice("Server rejected the nonce.");
-    } finally {
-      setSolving(false);
-    }
-  }
-
-  const attemptsLeft = Math.max(0, challenge.attemptsAllowed - challenge.attemptsUsed);
-  return (
-    <div className="cc-surface" style={{ padding: 12, display: "grid", gap: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-        <strong>Cryptographic puzzle</strong>
-        <span style={{ fontSize: 12, color: "var(--cc-muted)" }}>
-          attempts left: {attemptsLeft} / {challenge.attemptsAllowed}
-        </span>
-      </div>
-      <div style={{ fontSize: 13, color: "var(--cc-muted)" }}>{challenge.question}</div>
-      <div style={{ fontSize: 12 }}>
-        <span style={{ color: "var(--cc-muted)" }}>challenge:</span> <code>{challenge.challenge}</code>
-      </div>
-      <div style={{ fontSize: 12 }}>
-        <span style={{ color: "var(--cc-muted)" }}>maxIterations:</span> {challenge.maxIterations}
-      </div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button className="cc-btn" type="button" onClick={() => void autoSolve()} disabled={running || solving || attemptsLeft === 0}>
-          {running ? `Solving… ${progress}%` : "Auto-solve in browser"}
-        </button>
-        {challenge.expiresAt ? (
-          <span style={{ fontSize: 12, color: "var(--cc-muted)" }}>
-            expires {new Date(challenge.expiresAt).toLocaleTimeString()}
-          </span>
-        ) : null}
-      </div>
-    </div>
-  );
 }

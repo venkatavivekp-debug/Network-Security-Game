@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AlgorithmType, SimulationRunRequest, SimulationRunResponse } from "../api/types";
+import type {
+  AlgorithmType,
+  SimulationRunRequest,
+  SimulationRunResponse,
+  SystemPressureResponse,
+} from "../api/types";
 import { ApiError } from "../api/client";
 import { simulationApi } from "../api/simulation";
+import { adminApi } from "../api/admin";
+import { ThreatBanner } from "../components/cyber/ThreatBanner";
 
 type Phase = "setup" | "attack" | "defense" | "recovery" | "results";
 type NodeState = "neutral" | "stable" | "attacked" | "recovering";
@@ -41,6 +48,25 @@ export function CommandCenterPage() {
   const [kpiResilience, setKpiResilience] = useState(1);
   const [kpiEfficiency, setKpiEfficiency] = useState(0);
   const [lastResult, setLastResult] = useState<SimulationRunResponse | null>(null);
+  const [pressure, setPressure] = useState<SystemPressureResponse | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function tick() {
+      try {
+        const snap = await adminApi.systemPressure();
+        if (!cancelled) setPressure(snap);
+      } catch {
+        // best-effort; ignore
+      }
+    }
+    void tick();
+    const id = setInterval(tick, 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   const derivedSeed = useMemo(() => {
     return (((numNodes * 73856093) ^ (numEdges * 19349663) ^ (attackBudget * 83492791)) >>> 0) || 1;
@@ -171,6 +197,7 @@ export function CommandCenterPage() {
 
   return (
     <div className="cc-page">
+      <ThreatBanner snapshot={pressure} />
       <section className="cc-surface cc-mission">
         <div className="cc-mission-left">
           <div className="cc-title-row">
@@ -254,6 +281,11 @@ export function CommandCenterPage() {
               <Kpi label="Compromise" value={format3(kpiCompromise)} hint="Approx. fraction compromised" />
               <Kpi label="Resilience" value={format3(kpiResilience)} hint="Connectivity ratio proxy" />
               <Kpi label="Attack Eff." value={format3(kpiEfficiency)} hint="Effective success probability" />
+              <Kpi
+                label="Pressure"
+                value={pressure ? `${(pressure.pressure * 100).toFixed(0)}%` : "—"}
+                hint={pressure ? `Adaptive load · ${pressure.level}` : "Live system pressure"}
+              />
             </div>
 
             <div className="cc-section-title">Last Persisted Run</div>
