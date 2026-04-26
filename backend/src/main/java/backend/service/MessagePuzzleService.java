@@ -1,5 +1,8 @@
 package backend.service;
 
+import backend.adaptive.UserBehaviorProfileService;
+import backend.audit.AuditEventType;
+import backend.audit.AuditService;
 import backend.config.PuzzleProperties;
 import backend.dto.PuzzleChallengeResponse;
 import backend.dto.PuzzleSolveRequest;
@@ -20,7 +23,9 @@ import jakarta.validation.Validator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -32,6 +37,8 @@ public class MessagePuzzleService {
     private final UserService userService;
     private final PuzzleService puzzleService;
     private final PuzzleProperties puzzleProperties;
+    private final UserBehaviorProfileService userBehaviorProfileService;
+    private final AuditService auditService;
     private final Validator validator;
 
     public MessagePuzzleService(
@@ -40,6 +47,8 @@ public class MessagePuzzleService {
             UserService userService,
             PuzzleService puzzleService,
             PuzzleProperties puzzleProperties,
+            UserBehaviorProfileService userBehaviorProfileService,
+            AuditService auditService,
             Validator validator
     ) {
         this.puzzleRepository = puzzleRepository;
@@ -47,6 +56,8 @@ public class MessagePuzzleService {
         this.userService = userService;
         this.puzzleService = puzzleService;
         this.puzzleProperties = puzzleProperties;
+        this.userBehaviorProfileService = userBehaviorProfileService;
+        this.auditService = auditService;
         this.validator = validator;
     }
 
@@ -79,6 +90,7 @@ public class MessagePuzzleService {
     public PuzzleSolveResponse solve(Long messageId, PuzzleSolveRequest request, String receiverUsername) {
         validateBean(request);
         Message message = requireReceiverMessage(messageId, receiverUsername);
+        User receiver = message.getReceiver();
         if (message.getAlgorithmType() != AlgorithmType.CPHS) {
             throw new BadRequestException("Puzzle is only required for CPHS messages");
         }
@@ -110,14 +122,33 @@ public class MessagePuzzleService {
         try {
             int nonce = request.getNonce();
             if (nonce >= puzzle.getMaxIterations()) {
+                userBehaviorProfileService.recordPuzzleFailure(receiver);
+                puzzleRepository.save(puzzle);
                 throw new BadRequestException("nonce must be less than maxIterations");
             }
             // Verifies correctness by matching SHA256(challenge:nonce) to targetHash.
             puzzleService.recoverKeyFromNonce(puzzle.getChallenge(), puzzle.getTargetHash(), nonce, puzzle.getWrappedKey());
 
-            puzzle.setSolvedAt(LocalDateTime.now());
+            LocalDateTime solvedAt = LocalDateTime.now();
+            puzzle.setSolvedAt(solvedAt);
             puzzle.setSolvedNonce(nonce);
             message.setStatus(MessageStatus.UNLOCKED);
+
+            long solveTimeMs = Math.max(0, Duration.between(message.getCreatedAt(), solvedAt).toMillis());
+            userBehaviorProfileService.recordPuzzleSuccess(receiver, solveTimeMs);
+            auditService.record(
+                    AuditEventType.PUZZLE_SOLVE_SUCCESS,
+                    receiver.getUsername(),
+                    receiver.getUsername(),
+                    null,
+                    null,
+                    null,
+                    Map.of(
+                            "messageId", message.getId(),
+                            "attemptsUsed", puzzle.getAttemptsUsed(),
+                            "solveTimeMs", solveTimeMs
+                    )
+            );
 
             puzzleRepository.save(puzzle);
             messageRepository.save(message);
@@ -130,7 +161,30 @@ public class MessagePuzzleService {
             response.setSolvedAt(puzzle.getSolvedAt());
             response.setStatus("Puzzle solved. Message unlocked.");
             return response;
+        } catch (BadRequestException ex) {
+            // already accounted for above (nonce out of range).
+            throw ex;
         } catch (RuntimeException ex) {
+            userBehaviorProfileService.recordPuzzleFailure(receiver);
+            auditService.record(
+                    AuditEventType.PUZZLE_SOLVE_FAILURE,
+                    receiver.getUsername(),
+                    receiver.getUsername(),
+                    null,
+                    null,
+                    null,
+                    Map.of(
+                            "messageId", message.getId(),
+                            "attemptsUsed", puzzle.getAttemptsUsed(),
+                            "reason", ex.getMessage()
+                    )
+            );
+            // Auto-hold the message after exhausting attempts so the recovery state machine can take over.
+            if (puzzle.getAttemptsUsed() >= puzzle.getAttemptsAllowed() && message.getStatus() != MessageStatus.HELD) {
+                message.setStatus(MessageStatus.HELD);
+                message.setHoldReason("PUZZLE_ATTEMPTS_EXHAUSTED");
+                messageRepository.save(message);
+            }
             puzzleRepository.save(puzzle);
             throw ex;
         }

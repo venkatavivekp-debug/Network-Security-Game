@@ -1,5 +1,8 @@
 package backend.service;
 
+import backend.audit.AuditEvent;
+import backend.audit.AuditEventRepository;
+import backend.audit.AuditEventType;
 import backend.dto.EvaluationAnalysisResponse;
 import backend.dto.EvaluationModeComparisonSummary;
 import backend.model.EvaluationMetrics;
@@ -21,9 +24,14 @@ public class EvaluationAnalysisService {
     private static final double HIGH_INTENSITY = 2.0 / 3.0;
 
     private final EvaluationExperimentService evaluationExperimentService;
+    private final AuditEventRepository auditEventRepository;
 
-    public EvaluationAnalysisService(EvaluationExperimentService evaluationExperimentService) {
+    public EvaluationAnalysisService(
+            EvaluationExperimentService evaluationExperimentService,
+            AuditEventRepository auditEventRepository
+    ) {
         this.evaluationExperimentService = evaluationExperimentService;
+        this.auditEventRepository = auditEventRepository;
     }
 
     public EvaluationAnalysisResponse analyze(
@@ -56,12 +64,57 @@ public class EvaluationAnalysisService {
 
         List<String> insights = buildInsights(attackIntensity, metrics, comparison, recommended);
 
+        OperationalRates rates = computeOperationalRates();
+
         EvaluationAnalysisResponse response = new EvaluationAnalysisResponse();
         response.setMetrics(metrics);
         response.setInsights(insights);
         response.setBestMode(bestMode);
         response.setRecommendedModeByThreatLevel(recommended);
+        response.setPuzzleFailureEscalationRate(rates.puzzleFailureEscalationRate);
+        response.setAdminReviewRate(rates.adminReviewRate);
         return response;
+    }
+
+    /**
+     * Computes two operational rates from the live audit log:
+     * <ul>
+     *     <li>puzzleFailureEscalationRate = puzzle failures / (puzzle attempts) over the last
+     *     200 audit events. Returns null if there are no puzzle attempts in the window.</li>
+     *     <li>adminReviewRate = admin "release_message" or "hold_message" actions / message sends
+     *     over the same window. Returns null if there were no message sends.</li>
+     * </ul>
+     */
+    private OperationalRates computeOperationalRates() {
+        List<AuditEvent> recent = auditEventRepository.findTop200ByOrderByCreatedAtDesc();
+        long puzzleSolves = 0;
+        long puzzleFails = 0;
+        long messageSends = 0;
+        long adminReviews = 0;
+        for (AuditEvent e : recent) {
+            AuditEventType t = e.getEventType();
+            if (t == null) continue;
+            switch (t) {
+                case PUZZLE_SOLVE_SUCCESS -> puzzleSolves++;
+                case PUZZLE_SOLVE_FAILURE -> puzzleFails++;
+                case MESSAGE_SEND -> messageSends++;
+                case ADMIN_ACTION -> {
+                    if (e.getDetails() != null
+                            && (e.getDetails().contains("hold_message") || e.getDetails().contains("release_message"))) {
+                        adminReviews++;
+                    }
+                }
+                default -> {
+                }
+            }
+        }
+        long puzzleAttempts = puzzleSolves + puzzleFails;
+        Double escalationRate = puzzleAttempts == 0 ? null : ((double) puzzleFails) / puzzleAttempts;
+        Double adminRate = messageSends == 0 ? null : ((double) adminReviews) / messageSends;
+        return new OperationalRates(escalationRate, adminRate);
+    }
+
+    private record OperationalRates(Double puzzleFailureEscalationRate, Double adminReviewRate) {
     }
 
     private String pickBestForIntensity(

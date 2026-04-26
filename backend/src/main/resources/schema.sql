@@ -210,3 +210,21 @@ CREATE TABLE IF NOT EXISTS evaluation_results (
 
 CREATE INDEX idx_eval_results_created_at ON evaluation_results(created_at);
 CREATE INDEX idx_eval_results_mode ON evaluation_results(mode);
+
+CREATE TABLE IF NOT EXISTS user_behavior_profiles (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL UNIQUE,
+    puzzle_attempts BIGINT NOT NULL DEFAULT 0,
+    puzzle_successes BIGINT NOT NULL DEFAULT 0,
+    puzzle_failures BIGINT NOT NULL DEFAULT 0,
+    consecutive_failures INT NOT NULL DEFAULT 0,
+    avg_solve_time_ms DOUBLE NOT NULL DEFAULT 0,
+    recovery_events INT NOT NULL DEFAULT 0,
+    last_updated TIMESTAMP NOT NULL,
+    last_success_at TIMESTAMP NULL,
+    last_failure_at TIMESTAMP NULL,
+    CONSTRAINT fk_behavior_user FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX idx_user_behavior_user ON user_behavior_profiles(user_id);
+CREATE INDEX idx_user_behavior_failures ON user_behavior_profiles(consecutive_failures);

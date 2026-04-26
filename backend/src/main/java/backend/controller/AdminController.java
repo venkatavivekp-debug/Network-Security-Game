@@ -1,8 +1,10 @@
 package backend.controller;
 
 import backend.adaptive.AdaptiveSecurityService;
+import backend.adaptive.RecoveryStateMapper;
 import backend.adaptive.RiskAssessment;
 import backend.adaptive.ThreatSignalService;
+import backend.adaptive.UserBehaviorProfileService;
 import backend.audit.AuditEvent;
 import backend.audit.AuditEventRepository;
 import backend.audit.AuditEventType;
@@ -12,8 +14,12 @@ import backend.exception.BadRequestException;
 import backend.exception.ResourceNotFoundException;
 import backend.model.Message;
 import backend.model.MessageStatus;
+import backend.model.Puzzle;
 import backend.model.User;
+import backend.model.UserBehaviorProfile;
 import backend.repository.MessageRepository;
+import backend.repository.PuzzleRepository;
+import backend.repository.UserBehaviorProfileRepository;
 import backend.service.UserService;
 import backend.util.ApiResponseUtil;
 import backend.util.RequestContextUtil;
@@ -29,6 +35,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -44,6 +52,9 @@ public class AdminController {
     private final ThreatSignalService threatSignalService;
     private final AuditEventRepository auditEventRepository;
     private final MessageRepository messageRepository;
+    private final PuzzleRepository puzzleRepository;
+    private final UserBehaviorProfileRepository behaviorRepository;
+    private final UserBehaviorProfileService behaviorService;
 
     public AdminController(
             UserService userService,
@@ -52,7 +63,10 @@ public class AdminController {
             RequestContextUtil requestContextUtil,
             ThreatSignalService threatSignalService,
             AuditEventRepository auditEventRepository,
-            MessageRepository messageRepository
+            MessageRepository messageRepository,
+            PuzzleRepository puzzleRepository,
+            UserBehaviorProfileRepository behaviorRepository,
+            UserBehaviorProfileService behaviorService
     ) {
         this.userService = userService;
         this.adaptiveSecurityService = adaptiveSecurityService;
@@ -61,6 +75,9 @@ public class AdminController {
         this.threatSignalService = threatSignalService;
         this.auditEventRepository = auditEventRepository;
         this.messageRepository = messageRepository;
+        this.puzzleRepository = puzzleRepository;
+        this.behaviorRepository = behaviorRepository;
+        this.behaviorService = behaviorService;
     }
 
     @PostMapping("/lock-user")
@@ -221,12 +238,104 @@ public class AdminController {
         msg.setHoldReason(null);
         messageRepository.save(msg);
 
+        // Record a recovery event in the receiver's behavior profile so the SOC and the
+        // adaptive engine see that the user has been through admin-supervised recovery.
+        if (msg.getReceiver() != null) {
+            behaviorService.recordRecoveryEvent(msg.getReceiver());
+        }
+
         String ip = requestContextUtil.clientIp(httpRequest);
         String ua = requestContextUtil.userAgent(httpRequest);
         auditService.record(AuditEventType.ADMIN_ACTION, authentication.getName(), msg.getReceiver().getUsername(), ip, ua, null,
                 Map.of("action", "release_message", "messageId", messageId));
 
         return ResponseEntity.ok(ApiResponseUtil.success("Message released", httpRequest.getRequestURI(), Map.of("messageId", messageId, "status", msg.getStatus().name())));
+    }
+
+    /**
+     * Lists messages currently HELD by the system. Admins see metadata only, never plaintext.
+     */
+    @GetMapping("/held-messages")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiSuccessResponse<List<Map<String, Object>>>> heldMessages(HttpServletRequest httpRequest) {
+        List<Message> held = messageRepository.findAll().stream()
+                .filter(m -> m.getStatus() == MessageStatus.HELD)
+                .toList();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Message m : held) {
+            Puzzle puzzle = puzzleRepository.findByMessageId(m.getId()).orElse(null);
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("messageId", m.getId());
+            entry.put("senderUsername", m.getSender() == null ? null : m.getSender().getUsername());
+            entry.put("receiverUsername", m.getReceiver() == null ? null : m.getReceiver().getUsername());
+            entry.put("requestedMode", m.getRequestedAlgorithmType() == null ? null : m.getRequestedAlgorithmType().name());
+            entry.put("enforcedMode", m.getAlgorithmType() == null ? null : m.getAlgorithmType().name());
+            entry.put("riskScore", m.getRiskScoreAtSend());
+            entry.put("riskLevel", m.getRiskLevelAtSend());
+            entry.put("holdReason", m.getHoldReason());
+            entry.put("recoveryState", RecoveryStateMapper.resolve(m, puzzle).name());
+            entry.put("createdAt", m.getCreatedAt());
+            result.add(entry);
+        }
+        return ResponseEntity.ok(ApiResponseUtil.success("Held messages fetched", httpRequest.getRequestURI(), result));
+    }
+
+    /**
+     * Lists users currently flagged by the behavior profile engine (consecutive failures
+     * &gt; 0 or many puzzle failures). Used by the admin SOC to see who needs supervision.
+     */
+    @GetMapping("/users-at-risk")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiSuccessResponse<List<Map<String, Object>>>> usersAtRisk(HttpServletRequest httpRequest) {
+        List<UserBehaviorProfile> profiles = behaviorRepository.findTop50ByOrderByConsecutiveFailuresDescLastFailureAtDesc();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (UserBehaviorProfile p : profiles) {
+            User user = userService.getById(p.getUserId());
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("username", user == null ? null : user.getUsername());
+            entry.put("puzzleAttempts", p.getPuzzleAttempts());
+            entry.put("puzzleSuccesses", p.getPuzzleSuccesses());
+            entry.put("puzzleFailures", p.getPuzzleFailures());
+            entry.put("consecutiveFailures", p.getConsecutiveFailures());
+            entry.put("avgSolveTimeMs", p.getAvgSolveTimeMs());
+            entry.put("recoveryEvents", p.getRecoveryEvents());
+            entry.put("lastFailureAt", p.getLastFailureAt());
+            entry.put("lastSuccessAt", p.getLastSuccessAt());
+            result.add(entry);
+        }
+        return ResponseEntity.ok(ApiResponseUtil.success("Users at risk fetched", httpRequest.getRequestURI(), result));
+    }
+
+    /**
+     * Resets a user's failed challenge counters after admin review. The audit trail and
+     * the recovery_events counter make sure this is observable.
+     */
+    @PostMapping("/reset-failures")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiSuccessResponse<Map<String, Object>>> resetFailures(
+            @RequestParam("username") @NotBlank String username,
+            Authentication authentication,
+            HttpServletRequest httpRequest
+    ) {
+        User user = userService.getRequiredByUsername(username.trim());
+        UserBehaviorProfile updated = behaviorService.resetCounters(user);
+
+        String ip = requestContextUtil.clientIp(httpRequest);
+        String ua = requestContextUtil.userAgent(httpRequest);
+        auditService.record(
+                AuditEventType.ADMIN_ACTION,
+                authentication.getName(),
+                user.getUsername(),
+                ip,
+                ua,
+                null,
+                Map.of("action", "reset_failures", "consecutiveFailures", updated.getConsecutiveFailures())
+        );
+        return ResponseEntity.ok(ApiResponseUtil.success(
+                "Failure counters reset",
+                httpRequest.getRequestURI(),
+                Map.of("username", user.getUsername(), "consecutiveFailures", updated.getConsecutiveFailures())
+        ));
     }
 }
 

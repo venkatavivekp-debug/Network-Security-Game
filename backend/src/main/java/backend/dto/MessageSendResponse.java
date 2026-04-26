@@ -3,6 +3,7 @@ package backend.dto;
 import backend.model.AlgorithmType;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class MessageSendResponse {
 
@@ -15,7 +16,11 @@ public class MessageSendResponse {
     private boolean communicationHold;
     private Double riskScore;
     private String riskLevel;
+    private List<String> riskReasons;
     private String escalationReason;
+    private String recoveryState;
+    private boolean adminReviewRequired;
+    private String warningMessage;
     private LocalDateTime createdAt;
     private String status;
 
@@ -107,6 +112,38 @@ public class MessageSendResponse {
 
     public void setEscalationReason(String escalationReason) {
         this.escalationReason = escalationReason;
+    }
+
+    public List<String> getRiskReasons() {
+        return riskReasons;
+    }
+
+    public void setRiskReasons(List<String> riskReasons) {
+        this.riskReasons = riskReasons;
+    }
+
+    public String getRecoveryState() {
+        return recoveryState;
+    }
+
+    public void setRecoveryState(String recoveryState) {
+        this.recoveryState = recoveryState;
+    }
+
+    public boolean isAdminReviewRequired() {
+        return adminReviewRequired;
+    }
+
+    public void setAdminReviewRequired(boolean adminReviewRequired) {
+        this.adminReviewRequired = adminReviewRequired;
+    }
+
+    public String getWarningMessage() {
+        return warningMessage;
+    }
+
+    public void setWarningMessage(String warningMessage) {
+        this.warningMessage = warningMessage;
     }
 
     public LocalDateTime getCreatedAt() {

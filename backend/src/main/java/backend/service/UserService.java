@@ -60,6 +60,14 @@ public class UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
     }
 
+    @Transactional(readOnly = true)
+    public User getById(Long id) {
+        if (id == null) {
+            return null;
+        }
+        return userRepository.findById(id).orElse(null);
+    }
+
     private <T> void validateBean(T bean) {
         Set<ConstraintViolation<T>> violations = validator.validate(bean);
         if (!violations.isEmpty()) {

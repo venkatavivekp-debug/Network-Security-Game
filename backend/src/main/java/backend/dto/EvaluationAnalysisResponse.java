@@ -16,6 +16,8 @@ public class EvaluationAnalysisResponse {
     private List<String> insights;
     private String bestMode;
     private Map<String, String> recommendedModeByThreatLevel = new LinkedHashMap<>();
+    private Double puzzleFailureEscalationRate;
+    private Double adminReviewRate;
 
     public Map<String, EvaluationMetrics> getMetrics() {
         return metrics;
@@ -47,5 +49,21 @@ public class EvaluationAnalysisResponse {
 
     public void setRecommendedModeByThreatLevel(Map<String, String> recommendedModeByThreatLevel) {
         this.recommendedModeByThreatLevel = recommendedModeByThreatLevel;
+    }
+
+    public Double getPuzzleFailureEscalationRate() {
+        return puzzleFailureEscalationRate;
+    }
+
+    public void setPuzzleFailureEscalationRate(Double puzzleFailureEscalationRate) {
+        this.puzzleFailureEscalationRate = puzzleFailureEscalationRate;
+    }
+
+    public Double getAdminReviewRate() {
+        return adminReviewRate;
+    }
+
+    public void setAdminReviewRate(Double adminReviewRate) {
+        this.adminReviewRate = adminReviewRate;
     }
 }

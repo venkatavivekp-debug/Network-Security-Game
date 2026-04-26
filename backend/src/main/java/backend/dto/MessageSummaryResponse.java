@@ -16,6 +16,9 @@ public class MessageSummaryResponse {
     private Double riskScore;
     private String riskLevel;
     private String warning;
+    private String warningMessage;
+    private String recoveryState;
+    private boolean adminReviewRequired;
     private String metadata;
     private LocalDateTime createdAt;
 
@@ -97,6 +100,30 @@ public class MessageSummaryResponse {
 
     public void setWarning(String warning) {
         this.warning = warning;
+    }
+
+    public String getWarningMessage() {
+        return warningMessage;
+    }
+
+    public void setWarningMessage(String warningMessage) {
+        this.warningMessage = warningMessage;
+    }
+
+    public String getRecoveryState() {
+        return recoveryState;
+    }
+
+    public void setRecoveryState(String recoveryState) {
+        this.recoveryState = recoveryState;
+    }
+
+    public boolean isAdminReviewRequired() {
+        return adminReviewRequired;
+    }
+
+    public void setAdminReviewRequired(boolean adminReviewRequired) {
+        this.adminReviewRequired = adminReviewRequired;
     }
 
     public String getMetadata() {

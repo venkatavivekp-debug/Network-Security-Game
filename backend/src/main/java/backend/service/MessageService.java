@@ -9,6 +9,8 @@ import backend.dto.MessageSummaryResponse;
 import backend.adaptive.AdaptiveDecision;
 import backend.adaptive.AdaptiveModePolicyService;
 import backend.adaptive.PuzzleDifficulty;
+import backend.adaptive.RecoveryStateMapper;
+import backend.adaptive.UserBehaviorProfileService;
 import backend.audit.AuditEventType;
 import backend.audit.AuditService;
 import backend.exception.BadRequestException;
@@ -16,6 +18,7 @@ import backend.exception.ResourceNotFoundException;
 import backend.model.AlgorithmType;
 import backend.model.Message;
 import backend.model.MessageStatus;
+import backend.model.RecoveryState;
 import backend.model.Role;
 import backend.model.User;
 import backend.repository.MessageRepository;
@@ -53,6 +56,7 @@ public class MessageService {
     private final MessagePuzzleService messagePuzzleService;
     private final PuzzleRepository puzzleRepository;
     private final AdaptiveModePolicyService adaptiveModePolicyService;
+    private final UserBehaviorProfileService userBehaviorProfileService;
     private final AuditService auditService;
     private final RequestContextUtil requestContextUtil;
     private final ObjectMapper objectMapper;
@@ -68,6 +72,7 @@ public class MessageService {
             MessagePuzzleService messagePuzzleService,
             PuzzleRepository puzzleRepository,
             AdaptiveModePolicyService adaptiveModePolicyService,
+            UserBehaviorProfileService userBehaviorProfileService,
             AuditService auditService,
             RequestContextUtil requestContextUtil,
             ObjectMapper objectMapper,
@@ -82,6 +87,7 @@ public class MessageService {
         this.messagePuzzleService = messagePuzzleService;
         this.puzzleRepository = puzzleRepository;
         this.adaptiveModePolicyService = adaptiveModePolicyService;
+        this.userBehaviorProfileService = userBehaviorProfileService;
         this.auditService = auditService;
         this.requestContextUtil = requestContextUtil;
         this.objectMapper = objectMapper;
@@ -110,7 +116,8 @@ public class MessageService {
 
         String ip = requestContextUtil.clientIp(httpServletRequest);
         String ua = requestContextUtil.userAgent(httpServletRequest);
-        AdaptiveDecision decision = adaptiveModePolicyService.decide(sender, request.getAlgorithmType(), ip, ua, 0, 0);
+        int recentFailures = userBehaviorProfileService.recentFailureBurst(sender);
+        AdaptiveDecision decision = adaptiveModePolicyService.decide(sender, request.getAlgorithmType(), ip, ua, recentFailures, 0);
 
         EncryptionPackage packageData = encryptByAlgorithm(
                 decision.getEffectiveMode(),
@@ -184,12 +191,28 @@ public class MessageService {
         response.setCommunicationHold(decision.isCommunicationHold());
         response.setRiskScore(decision.getAssessment().getRiskScore());
         response.setRiskLevel(decision.getAssessment().getRiskLevel().name());
+        response.setRiskReasons(decision.getReasons());
         response.setEscalationReason(String.join(", ", decision.getReasons()));
+        response.setRecoveryState(RecoveryStateMapper.resolve(saved).name());
+        response.setAdminReviewRequired(decision.isCommunicationHold());
+        response.setWarningMessage(buildSenderWarning(decision));
         response.setCreatedAt(saved.getCreatedAt());
         response.setStatus(decision.isCommunicationHold()
                 ? "Message held for admin-supervised recovery"
                 : "Message stored securely");
         return response;
+    }
+
+    private String buildSenderWarning(AdaptiveDecision decision) {
+        if (decision.isCommunicationHold()) {
+            return "Communication is on hold. An administrator must review session metadata before the receiver can proceed.";
+        }
+        if (decision.isEscalated()) {
+            return "Security mode was upgraded from " + decision.getRequestedMode()
+                    + " to " + decision.getEffectiveMode()
+                    + " because risk was assessed as " + decision.getAssessment().getRiskLevel() + ".";
+        }
+        return null;
     }
 
     @Transactional(readOnly = true)
@@ -308,7 +331,13 @@ public class MessageService {
         response.setStatus(message.getStatus() == null ? null : message.getStatus().name());
         response.setRiskScore(message.getRiskScoreAtSend());
         response.setRiskLevel(message.getRiskLevelAtSend());
-        response.setWarning(buildReceiverWarning(message));
+        String warning = buildReceiverWarning(message);
+        response.setWarning(warning);
+        response.setWarningMessage(warning);
+        var puzzle = puzzleRepository.findByMessageId(message.getId()).orElse(null);
+        RecoveryState state = RecoveryStateMapper.resolve(message, puzzle);
+        response.setRecoveryState(state.name());
+        response.setAdminReviewRequired(state == RecoveryState.HELD || state == RecoveryState.ADMIN_REVIEW_REQUIRED);
         response.setMetadata(message.getMetadata());
         response.setCreatedAt(message.getCreatedAt());
         return response;
