@@ -1,6 +1,18 @@
-export type Role = "SENDER" | "RECEIVER";
+export type Role = "SENDER" | "RECEIVER" | "ADMIN";
 
 export type AlgorithmType = "NORMAL" | "SHCS" | "CPHS";
+
+export type RecoveryState =
+  | "NORMAL"
+  | "CHALLENGE_REQUIRED"
+  | "ESCALATED"
+  | "HELD"
+  | "ADMIN_REVIEW_REQUIRED"
+  | "RECOVERY_IN_PROGRESS"
+  | "RECOVERED"
+  | "FAILED";
+
+export type RiskLevel = "LOW" | "ELEVATED" | "HIGH" | "CRITICAL";
 
 export interface ApiSuccessResponse<T> {
   timestamp: string;
@@ -43,8 +55,22 @@ export interface MessageSendRequest {
 }
 
 export interface MessageSendResponse {
-  id: number;
-  message: string;
+  messageId: number;
+  senderUsername: string;
+  receiverUsername: string;
+  requestedAlgorithmType: AlgorithmType;
+  effectiveAlgorithmType: AlgorithmType;
+  escalated: boolean;
+  communicationHold: boolean;
+  riskScore: number | null;
+  riskLevel: RiskLevel | null;
+  riskReasons: string[] | null;
+  escalationReason: string | null;
+  recoveryState: RecoveryState | null;
+  adminReviewRequired: boolean;
+  warningMessage: string | null;
+  createdAt: string;
+  status: string;
 }
 
 export interface MessageSummaryResponse {
@@ -53,17 +79,83 @@ export interface MessageSummaryResponse {
   receiverUsername: string;
   encryptedContent: string;
   algorithmType: AlgorithmType;
+  requestedAlgorithmType: AlgorithmType | null;
+  status: string | null;
+  riskScore: number | null;
+  riskLevel: RiskLevel | null;
+  warning: string | null;
+  warningMessage: string | null;
+  recoveryState: RecoveryState | null;
+  adminReviewRequired: boolean;
   metadata: string | null;
+  createdAt: string;
+}
+
+export interface PuzzleChallengeResponse {
+  messageId: number;
+  puzzleType: string;
+  question: string;
+  challenge: string;
+  targetHash: string;
+  maxIterations: number;
+  attemptsAllowed: number;
+  attemptsUsed: number;
+  expiresAt: string | null;
+  solved: boolean;
+}
+
+export interface PuzzleSolveResponse {
+  messageId: number;
+  solved: boolean;
+  attemptsAllowed: number;
+  attemptsUsed: number;
+  solvedAt: string | null;
+  status: string;
+}
+
+export interface HeldMessageView {
+  messageId: number;
+  senderUsername: string;
+  receiverUsername: string;
+  requestedMode: AlgorithmType | null;
+  enforcedMode: AlgorithmType | null;
+  riskScore: number | null;
+  riskLevel: RiskLevel | null;
+  holdReason: string | null;
+  recoveryState: RecoveryState | null;
+  createdAt: string | null;
+}
+
+export interface UserAtRiskView {
+  username: string;
+  puzzleAttempts: number;
+  puzzleSuccesses: number;
+  puzzleFailures: number;
+  consecutiveFailures: number;
+  avgSolveTimeMs: number;
+  recoveryEvents: number;
+  lastFailureAt: string | null;
+  lastSuccessAt: string | null;
+}
+
+export interface AuditEventView {
+  id: number;
+  eventType: string;
+  actorUsername: string | null;
+  subjectUsername: string | null;
+  ipHash: string | null;
+  fingerprintHash: string | null;
+  riskScore: number | null;
+  details: string | null;
   createdAt: string;
 }
 
 export interface MessageDecryptResponse {
   messageId: number;
-  senderUsername: string;
-  receiverUsername: string;
   algorithmType: AlgorithmType;
   decryptedContent: string;
-  metadata: string | null;
+  puzzleSolveTimeMs: number;
+  status: string;
 }
 
 export interface SimulationRunRequest {

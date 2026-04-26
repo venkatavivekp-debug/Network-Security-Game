@@ -5,6 +5,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { CommandCenterPage } from "./pages/CommandCenterPage";
 import { MessagingPage } from "./pages/MessagingPage";
 import { EvaluationPage } from "./pages/EvaluationPage";
+import { AdminPage } from "./pages/AdminPage";
 
 export default function App() {
   return (
@@ -33,6 +34,14 @@ export default function App() {
           element={
             <RequireAuth>
               <EvaluationPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <RequireAuth>
+              <AdminPage />
             </RequireAuth>
           }
         />

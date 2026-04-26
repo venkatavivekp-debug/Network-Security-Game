@@ -30,6 +30,11 @@ export function AppLayout() {
           <NavLink to="/evaluation" className={({ isActive }) => (isActive ? "cc-navlink is-active" : "cc-navlink")}>
             Evaluation
           </NavLink>
+          {user?.role === "ADMIN" ? (
+            <NavLink to="/admin" className={({ isActive }) => (isActive ? "cc-navlink is-active" : "cc-navlink")}>
+              Admin SOC
+            </NavLink>
+          ) : null}
         </nav>
 
         <div className="cc-topbar__user">
