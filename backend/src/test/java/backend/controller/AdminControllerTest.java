@@ -15,6 +15,7 @@ import backend.model.UserBehaviorProfile;
 import backend.repository.MessageRepository;
 import backend.repository.PuzzleRepository;
 import backend.repository.UserBehaviorProfileRepository;
+import backend.security.RecoveryPolicyService;
 import backend.service.UserService;
 import backend.util.HashUtil;
 import backend.util.RequestContextUtil;
@@ -121,7 +122,8 @@ class AdminControllerTest {
                     puzzleRepository,
                     behaviorRepository,
                     behaviorService,
-                    systemPressureService
+                    systemPressureService,
+                    new RecoveryPolicyService()
             );
         }
     }

@@ -24,6 +24,8 @@ import backend.model.Role;
 import backend.model.User;
 import backend.repository.MessageRepository;
 import backend.repository.PuzzleRepository;
+import backend.security.ConnectionSecurityService;
+import backend.security.RecoveryPolicyService;
 import backend.util.HashUtil;
 import backend.util.RequestContextUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -63,6 +65,8 @@ public class MessageService {
     private final ObjectMapper objectMapper;
     private final Validator validator;
     private final HashUtil hashUtil;
+    private final RecoveryPolicyService recoveryPolicyService;
+    private final ConnectionSecurityService connectionSecurityService;
 
     public MessageService(
             MessageRepository messageRepository,
@@ -78,7 +82,9 @@ public class MessageService {
             RequestContextUtil requestContextUtil,
             ObjectMapper objectMapper,
             Validator validator,
-            HashUtil hashUtil
+            HashUtil hashUtil,
+            RecoveryPolicyService recoveryPolicyService,
+            ConnectionSecurityService connectionSecurityService
     ) {
         this.messageRepository = messageRepository;
         this.userService = userService;
@@ -94,6 +100,8 @@ public class MessageService {
         this.objectMapper = objectMapper;
         this.validator = validator;
         this.hashUtil = hashUtil;
+        this.recoveryPolicyService = recoveryPolicyService;
+        this.connectionSecurityService = connectionSecurityService;
     }
 
     @Transactional
@@ -219,8 +227,14 @@ public class MessageService {
         response.setRiskLevel(decision.getAssessment().getRiskLevel().name());
         response.setRiskReasons(decision.getReasons());
         response.setEscalationReason(String.join(", ", decision.getReasons()));
-        response.setRecoveryState(RecoveryStateMapper.resolve(saved).name());
+        RecoveryState sendState = RecoveryStateMapper.resolve(saved);
+        response.setRecoveryState(sendState.name());
         response.setAdminReviewRequired(decision.isCommunicationHold());
+        RecoveryPolicyService.RecoveryPolicy sendPolicy = recoveryPolicyService.policyFor(sendState);
+        response.setRecoverySummary(sendPolicy.summary());
+        response.setRecoveryNextSteps(sendPolicy.nextSteps());
+        ConnectionSecurityService.Evaluation senderConn = connectionSecurityService.evaluate(sender, ip, ua);
+        response.setConnectionSecurityState(senderConn.state().name());
         response.setWarningMessage(buildSenderWarning(decision));
         response.setCreatedAt(saved.getCreatedAt());
         response.setStatus(decision.isCommunicationHold()
@@ -336,6 +350,19 @@ public class MessageService {
         response.setStatus("Decryption completed");
 
         messageRepository.save(message);
+        auditService.record(
+                AuditEventType.MESSAGE_UNLOCKED,
+                receiverUsername,
+                receiverUsername,
+                null,
+                null,
+                null,
+                Map.of(
+                        "messageId", message.getId(),
+                        "algorithmType", message.getAlgorithmType().name(),
+                        "puzzleSolveTimeMs", puzzleTimeMs
+                )
+        );
         LOGGER.info("Message {} decrypted by receiver {} using {}", messageId, receiverUsername, message.getAlgorithmType());
         return response;
     }
@@ -376,6 +403,9 @@ public class MessageService {
         RecoveryState state = RecoveryStateMapper.resolve(message, puzzle);
         response.setRecoveryState(state.name());
         response.setAdminReviewRequired(state == RecoveryState.HELD || state == RecoveryState.ADMIN_REVIEW_REQUIRED);
+        RecoveryPolicyService.RecoveryPolicy policy = recoveryPolicyService.policyFor(state);
+        response.setRecoverySummary(policy.summary());
+        response.setRecoveryNextSteps(policy.nextSteps());
         response.setMetadata(message.getMetadata());
         response.setCreatedAt(message.getCreatedAt());
         return response;

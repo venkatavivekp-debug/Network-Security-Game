@@ -35,7 +35,9 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+                        .sessionFixation(fix -> fix.changeSessionId()))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/", "/login", "/register", "/ui/login", "/ui/register", "/auth/register", "/auth/login", "/css/**").permitAll()
                         .requestMatchers("/send", "/ui/send", "/message/send").hasRole("SENDER")
@@ -52,7 +54,12 @@ public class SecurityConfig {
                 .authenticationProvider(authenticationProvider())
                 .httpBasic(Customizer.withDefaults())
                 .formLogin(form -> form.disable())
-                .logout(logout -> logout.logoutUrl("/logout").logoutSuccessUrl("/login?logout=true"));
+                .logout(logout -> logout
+                        .logoutUrl("/logout")
+                        .logoutSuccessUrl("/login?logout=true")
+                        .invalidateHttpSession(true)
+                        .clearAuthentication(true)
+                        .deleteCookies("NSG_SESSION", "JSESSIONID"));
 
         return http.build();
     }

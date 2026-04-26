@@ -20,6 +20,9 @@ public class MessageSendResponse {
     private String escalationReason;
     private String recoveryState;
     private boolean adminReviewRequired;
+    private String recoverySummary;
+    private List<String> recoveryNextSteps;
+    private String connectionSecurityState;
     private String warningMessage;
     private LocalDateTime createdAt;
     private String status;
@@ -136,6 +139,30 @@ public class MessageSendResponse {
 
     public void setAdminReviewRequired(boolean adminReviewRequired) {
         this.adminReviewRequired = adminReviewRequired;
+    }
+
+    public String getRecoverySummary() {
+        return recoverySummary;
+    }
+
+    public void setRecoverySummary(String recoverySummary) {
+        this.recoverySummary = recoverySummary;
+    }
+
+    public List<String> getRecoveryNextSteps() {
+        return recoveryNextSteps;
+    }
+
+    public void setRecoveryNextSteps(List<String> recoveryNextSteps) {
+        this.recoveryNextSteps = recoveryNextSteps;
+    }
+
+    public String getConnectionSecurityState() {
+        return connectionSecurityState;
+    }
+
+    public void setConnectionSecurityState(String connectionSecurityState) {
+        this.connectionSecurityState = connectionSecurityState;
     }
 
     public String getWarningMessage() {

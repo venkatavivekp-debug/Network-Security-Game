@@ -3,6 +3,7 @@ package backend.dto;
 import backend.model.AlgorithmType;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class MessageSummaryResponse {
 
@@ -19,6 +20,8 @@ public class MessageSummaryResponse {
     private String warningMessage;
     private String recoveryState;
     private boolean adminReviewRequired;
+    private String recoverySummary;
+    private List<String> recoveryNextSteps;
     private String metadata;
     private LocalDateTime createdAt;
 
@@ -124,6 +127,22 @@ public class MessageSummaryResponse {
 
     public void setAdminReviewRequired(boolean adminReviewRequired) {
         this.adminReviewRequired = adminReviewRequired;
+    }
+
+    public String getRecoverySummary() {
+        return recoverySummary;
+    }
+
+    public void setRecoverySummary(String recoverySummary) {
+        this.recoverySummary = recoverySummary;
+    }
+
+    public List<String> getRecoveryNextSteps() {
+        return recoveryNextSteps;
+    }
+
+    public void setRecoveryNextSteps(List<String> recoveryNextSteps) {
+        this.recoveryNextSteps = recoveryNextSteps;
     }
 
     public String getMetadata() {

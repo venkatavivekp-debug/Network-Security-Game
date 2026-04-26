@@ -12,6 +12,7 @@ import backend.model.User;
 import backend.service.MessageService;
 import backend.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import jakarta.validation.constraints.Positive;
@@ -116,10 +117,17 @@ public class PageController {
                 new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword())
         );
 
+        // Defense against session fixation: invalidate any pre-auth session before
+        // attaching the SecurityContext to a fresh one.
+        HttpSession existing = request.getSession(false);
+        if (existing != null) {
+            existing.invalidate();
+        }
+        HttpSession fresh = request.getSession(true);
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
-        request.getSession(true).setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
+        fresh.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
 
         User user = userService.getRequiredByUsername(authentication.getName());
         redirectAttributes.addFlashAttribute("notice", "Login successful");

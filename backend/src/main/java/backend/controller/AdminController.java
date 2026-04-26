@@ -21,6 +21,7 @@ import backend.model.UserBehaviorProfile;
 import backend.repository.MessageRepository;
 import backend.repository.PuzzleRepository;
 import backend.repository.UserBehaviorProfileRepository;
+import backend.security.RecoveryPolicyService;
 import backend.service.UserService;
 import backend.util.ApiResponseUtil;
 import backend.util.RequestContextUtil;
@@ -57,6 +58,7 @@ public class AdminController {
     private final UserBehaviorProfileRepository behaviorRepository;
     private final UserBehaviorProfileService behaviorService;
     private final SystemPressureService systemPressureService;
+    private final RecoveryPolicyService recoveryPolicyService;
 
     public AdminController(
             UserService userService,
@@ -69,7 +71,8 @@ public class AdminController {
             PuzzleRepository puzzleRepository,
             UserBehaviorProfileRepository behaviorRepository,
             UserBehaviorProfileService behaviorService,
-            SystemPressureService systemPressureService
+            SystemPressureService systemPressureService,
+            RecoveryPolicyService recoveryPolicyService
     ) {
         this.userService = userService;
         this.adaptiveSecurityService = adaptiveSecurityService;
@@ -82,6 +85,7 @@ public class AdminController {
         this.behaviorRepository = behaviorRepository;
         this.behaviorService = behaviorService;
         this.systemPressureService = systemPressureService;
+        this.recoveryPolicyService = recoveryPolicyService;
     }
 
     @PostMapping("/lock-user")
@@ -167,6 +171,48 @@ public class AdminController {
     public ResponseEntity<ApiSuccessResponse<List<AuditEvent>>> recentAudit(HttpServletRequest httpRequest) {
         List<AuditEvent> events = auditEventRepository.findTop200ByOrderByCreatedAtDesc();
         return ResponseEntity.ok(ApiResponseUtil.success("Recent audit events fetched", httpRequest.getRequestURI(), events));
+    }
+
+    /**
+     * Suspicious-session feed: a filtered slice of the audit log focused on
+     * connection-security signals (login failures/locks, session anomalies, rate-limit
+     * trips). The SOC console renders this as a separate stream from the general feed.
+     */
+    @GetMapping("/audit/suspicious-sessions")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiSuccessResponse<List<AuditEvent>>> suspiciousSessions(HttpServletRequest httpRequest) {
+        java.util.EnumSet<AuditEventType> suspicious = java.util.EnumSet.of(
+                AuditEventType.SESSION_ANOMALY,
+                AuditEventType.SESSION_REGENERATED,
+                AuditEventType.AUTH_LOGIN_FAILURE,
+                AuditEventType.AUTH_ACCOUNT_LOCKED,
+                AuditEventType.RATE_LIMIT_BLOCKED,
+                AuditEventType.AUTH_LOGOUT
+        );
+        List<AuditEvent> events = auditEventRepository.findTop200ByOrderByCreatedAtDesc().stream()
+                .filter(e -> suspicious.contains(e.getEventType()))
+                .limit(50)
+                .toList();
+        return ResponseEntity.ok(ApiResponseUtil.success("Suspicious sessions fetched", httpRequest.getRequestURI(), events));
+    }
+
+    /**
+     * Returns the recovery policy table so the UI can render legal next steps for
+     * any blocked state without hardcoding strings on the client.
+     */
+    @GetMapping("/recovery-policy")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiSuccessResponse<List<Map<String, Object>>>> recoveryPolicy(HttpServletRequest httpRequest) {
+        List<Map<String, Object>> body = new ArrayList<>();
+        recoveryPolicyService.all().forEach((state, policy) -> {
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("state", state.name());
+            entry.put("terminalGood", policy.terminalGood());
+            entry.put("summary", policy.summary());
+            entry.put("nextSteps", policy.nextSteps());
+            body.add(entry);
+        });
+        return ResponseEntity.ok(ApiResponseUtil.success("Recovery policy fetched", httpRequest.getRequestURI(), body));
     }
 
     @GetMapping("/threat-level")
