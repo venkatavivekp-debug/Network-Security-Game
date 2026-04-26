@@ -142,7 +142,7 @@ class MessageAccessControlTest {
             HashUtil hashUtil = new HashUtil();
             RecoveryPolicyService recoveryPolicyService = new RecoveryPolicyService();
             ConnectionSecurityService connectionSecurityService = new ConnectionSecurityService(
-                    adaptiveSecurityService, auditService);
+                    hashUtil, auditService, requestContextUtil);
 
             this.messageService = new MessageService(
                     messageRepository,

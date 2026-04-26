@@ -29,6 +29,25 @@ public class AdaptiveModePolicyService {
     }
 
     public AdaptiveDecision decide(User sender, AlgorithmType requestedMode, String ip, String userAgent, int recentPuzzleFailures, int recentEscalations) {
+        return decide(sender, requestedMode, ip, userAgent, recentPuzzleFailures, recentEscalations, null);
+    }
+
+    /**
+     * Same as {@link #decide(User, AlgorithmType, String, String, int, int)} but also
+     * folds the layered connection-security state into the risk reasoning. The state
+     * does not change the risk score directly (the connection model is not bound into
+     * key derivation); it only contributes a reason and may step the mode up by one
+     * tier when multiple network signals shift mid-session.
+     */
+    public AdaptiveDecision decide(
+            User sender,
+            AlgorithmType requestedMode,
+            String ip,
+            String userAgent,
+            int recentPuzzleFailures,
+            int recentEscalations,
+            String connectionState
+    ) {
         RiskAssessment assessment = adaptiveSecurityService.assess(sender, ip, userAgent, recentPuzzleFailures);
         double threat = threatSignalService.currentAttackIntensity01();
 
@@ -37,6 +56,10 @@ public class AdaptiveModePolicyService {
         if (recentPuzzleFailures > 0) reasons.add("user_puzzle_burst=" + recentPuzzleFailures);
         if (threat >= 0.55) reasons.add("threat_level_" + bucketThreat(threat));
         if (recentEscalations > 0) reasons.add("recent_escalations=" + recentEscalations);
+        if (connectionState != null) {
+            if ("SHIFTED".equals(connectionState)) reasons.add("connection_shifted");
+            else if ("ANOMALOUS".equals(connectionState)) reasons.add("connection_anomalous");
+        }
 
         AlgorithmType effective = requestedMode;
         boolean hold = false;
@@ -61,6 +84,13 @@ public class AdaptiveModePolicyService {
             effective = AlgorithmType.CPHS;
             hold = true;
             reasons.add("admin_review_required");
+        }
+
+        // Fingerprint-only step-up: ANOMALOUS connection nudges NORMAL → SHCS (one tier),
+        // never enforces a hold by itself. This keeps fingerprint a soft signal.
+        if ("ANOMALOUS".equals(connectionState) && effective == AlgorithmType.NORMAL) {
+            effective = AlgorithmType.SHCS;
+            reasons.add("step_up_connection_anomalous");
         }
 
         boolean escalated = effective != requestedMode;

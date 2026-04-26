@@ -126,7 +126,14 @@ public class MessageService {
         String ip = requestContextUtil.clientIp(httpServletRequest);
         String ua = requestContextUtil.userAgent(httpServletRequest);
         int recentFailures = userBehaviorProfileService.recentFailureBurst(sender);
-        AdaptiveDecision decision = adaptiveModePolicyService.decide(sender, request.getAlgorithmType(), ip, ua, recentFailures, 0);
+
+        // Evaluate connection BEFORE the mode decision so SHIFTED/ANOMALOUS sessions
+        // contribute a reason (and a soft mode step-up) without being a hard block.
+        ConnectionSecurityService.Evaluation senderConn = httpServletRequest == null
+                ? connectionSecurityService.evaluate(sender, ip, ua)
+                : connectionSecurityService.evaluate(sender, httpServletRequest);
+        AdaptiveDecision decision = adaptiveModePolicyService.decide(
+                sender, request.getAlgorithmType(), ip, ua, recentFailures, 0, senderConn.state().name());
 
         PuzzleType puzzleType = request.getPuzzleType() == null ? PuzzleType.POW_SHA256 : request.getPuzzleType();
         EncryptionPackage packageData = encryptByAlgorithm(
@@ -233,8 +240,8 @@ public class MessageService {
         RecoveryPolicyService.RecoveryPolicy sendPolicy = recoveryPolicyService.policyFor(sendState);
         response.setRecoverySummary(sendPolicy.summary());
         response.setRecoveryNextSteps(sendPolicy.nextSteps());
-        ConnectionSecurityService.Evaluation senderConn = connectionSecurityService.evaluate(sender, ip, ua);
         response.setConnectionSecurityState(senderConn.state().name());
+        response.setConnectionShiftedSignals(senderConn.shiftedSignals());
         response.setWarningMessage(buildSenderWarning(decision));
         response.setCreatedAt(saved.getCreatedAt());
         response.setStatus(decision.isCommunicationHold()

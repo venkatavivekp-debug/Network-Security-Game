@@ -1,5 +1,6 @@
 package backend.controller;
 
+import backend.adaptive.AdaptiveRiskPolicyService;
 import backend.adaptive.AdaptiveSecurityProperties;
 import backend.adaptive.AdaptiveSecurityService;
 import backend.adaptive.SystemPressureService;
@@ -15,6 +16,7 @@ import backend.model.UserBehaviorProfile;
 import backend.repository.MessageRepository;
 import backend.repository.PuzzleRepository;
 import backend.repository.UserBehaviorProfileRepository;
+import backend.security.AdminStepUpService;
 import backend.security.RecoveryPolicyService;
 import backend.service.UserService;
 import backend.util.HashUtil;
@@ -22,13 +24,18 @@ import backend.util.RequestContextUtil;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import backend.exception.AdminStepUpRequiredException;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -52,14 +59,84 @@ class AdminControllerTest {
 
         MockHttpServletRequest req = new MockHttpServletRequest();
         req.setRequestURI("/admin/hold-message");
-        f.controller.holdMessage(5L, "ADMIN_REVIEW_REQUIRED",
-                new TestingAuthenticationToken("admin", "x", "ROLE_ADMIN"), req);
+        TestingAuthenticationToken adminAuth = new TestingAuthenticationToken("admin", "x", "ROLE_ADMIN");
+        f.confirmAdmin(adminAuth, req);
+        f.controller.holdMessage(5L, "ADMIN_REVIEW_REQUIRED", adminAuth, req);
         assertEquals(MessageStatus.HELD, msg.getStatus());
 
         req.setRequestURI("/admin/release-message");
-        f.controller.releaseMessage(5L,
-                new TestingAuthenticationToken("admin", "x", "ROLE_ADMIN"), req);
+        f.controller.releaseMessage(5L, adminAuth, req);
         assertEquals(MessageStatus.LOCKED, msg.getStatus());
+    }
+
+    @Test
+    void holdMessageRequiresAdminStepUp() {
+        Fixture f = new Fixture();
+        User receiver = new User("r", "x", Role.RECEIVER);
+        receiver.setId(11L);
+        Message msg = new Message();
+        msg.setId(5L);
+        msg.setReceiver(receiver);
+        msg.setStatus(MessageStatus.LOCKED);
+        when(f.messageRepository.findById(5L)).thenReturn(Optional.of(msg));
+
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setRequestURI("/admin/hold-message");
+        TestingAuthenticationToken adminAuth = new TestingAuthenticationToken("admin", "x", "ROLE_ADMIN");
+
+        // No prior /admin/confirm-action -> sensitive endpoint must reject.
+        assertThrows(AdminStepUpRequiredException.class,
+                () -> f.controller.holdMessage(5L, "ADMIN_REVIEW_REQUIRED", adminAuth, req));
+    }
+
+    @Test
+    void resetFailuresRequiresAdminStepUp() {
+        Fixture f = new Fixture();
+        User user = new User("victim", "x", Role.RECEIVER);
+        when(f.userService.getRequiredByUsername("victim")).thenReturn(user);
+
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setRequestURI("/admin/reset-failures");
+        TestingAuthenticationToken adminAuth = new TestingAuthenticationToken("admin", "x", "ROLE_ADMIN");
+
+        assertThrows(AdminStepUpRequiredException.class,
+                () -> f.controller.resetFailures("victim", adminAuth, req));
+    }
+
+    @Test
+    void heldMessagesDashboardDoesNotRequireStepUp() {
+        Fixture f = new Fixture();
+        when(f.messageRepository.findAll()).thenReturn(List.of());
+
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setRequestURI("/admin/held-messages");
+        // No step-up token attached -> read-only dashboards still work.
+        var body = f.controller.heldMessages(req).getBody().getData();
+        assertEquals(0, body.size());
+    }
+
+    @Test
+    void riskPolicyEndpointReturnsThresholdsWeightsAndLimitations() {
+        Fixture f = new Fixture();
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setRequestURI("/admin/risk-policy");
+
+        Map<String, Object> body = f.controller.riskPolicy(req).getBody().getData();
+        assertEquals("weighted-heuristic", body.get("model"));
+        assertNotNull(body.get("thresholds"));
+        assertNotNull(body.get("signals"));
+        assertNotNull(body.get("levelActions"));
+        assertNotNull(body.get("connectionStateContribution"));
+        assertNotNull(body.get("limitations"));
+
+        @SuppressWarnings("unchecked")
+        java.util.List<Map<String, Object>> signals = (java.util.List<Map<String, Object>>) body.get("signals");
+        assertFalse(signals.isEmpty());
+        for (Map<String, Object> sig : signals) {
+            assertNotNull(sig.get("id"));
+            assertNotNull(sig.get("weight"));
+            assertNotNull(sig.get("explanation"));
+        }
     }
 
     @Test
@@ -94,9 +171,11 @@ class AdminControllerTest {
         final PuzzleRepository puzzleRepository = mock(PuzzleRepository.class);
         final UserBehaviorProfileRepository behaviorRepository = mock(UserBehaviorProfileRepository.class);
         final AdminController controller;
+        final AdminStepUpService adminStepUpService;
+        final UserService userService;
 
         Fixture() {
-            UserService userService = mock(UserService.class);
+            this.userService = mock(UserService.class);
             AuditService auditService = mock(AuditService.class);
             RequestContextUtil requestContextUtil = new RequestContextUtil();
             ThreatSignalService threatSignalService = new ThreatSignalService();
@@ -111,6 +190,11 @@ class AdminControllerTest {
                     .thenReturn(List.of());
             SystemPressureService systemPressureService = new SystemPressureService(
                     threatSignalService, auditEventRepository, behaviorRepository);
+            PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
+            when(passwordEncoder.matches(any(), any())).thenReturn(true);
+            User adminUser = new User("admin", "hashed", Role.ADMIN);
+            when(userService.getRequiredByUsername("admin")).thenReturn(adminUser);
+            this.adminStepUpService = new AdminStepUpService(userService, passwordEncoder, auditService);
             this.controller = new AdminController(
                     userService,
                     adaptiveSecurityService,
@@ -123,8 +207,16 @@ class AdminControllerTest {
                     behaviorRepository,
                     behaviorService,
                     systemPressureService,
-                    new RecoveryPolicyService()
+                    new RecoveryPolicyService(),
+                    adminStepUpService,
+                    new AdaptiveRiskPolicyService(new AdaptiveSecurityProperties())
             );
+        }
+
+        /** Mint a step-up token and attach it to the request as the X-Admin-Confirm header. */
+        void confirmAdmin(TestingAuthenticationToken adminAuth, MockHttpServletRequest request) {
+            AdminStepUpService.StepUpToken token = adminStepUpService.confirm(adminAuth, "anything", request);
+            request.addHeader(AdminStepUpService.HEADER_NAME, token.token());
         }
     }
 }

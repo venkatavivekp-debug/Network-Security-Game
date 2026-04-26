@@ -1,5 +1,6 @@
 package backend.controller;
 
+import backend.adaptive.AdaptiveRiskPolicyService;
 import backend.adaptive.AdaptiveSecurityService;
 import backend.adaptive.RecoveryStateMapper;
 import backend.adaptive.RiskAssessment;
@@ -21,6 +22,7 @@ import backend.model.UserBehaviorProfile;
 import backend.repository.MessageRepository;
 import backend.repository.PuzzleRepository;
 import backend.repository.UserBehaviorProfileRepository;
+import backend.security.AdminStepUpService;
 import backend.security.RecoveryPolicyService;
 import backend.service.UserService;
 import backend.util.ApiResponseUtil;
@@ -33,6 +35,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -59,6 +62,8 @@ public class AdminController {
     private final UserBehaviorProfileService behaviorService;
     private final SystemPressureService systemPressureService;
     private final RecoveryPolicyService recoveryPolicyService;
+    private final AdminStepUpService adminStepUpService;
+    private final AdaptiveRiskPolicyService adaptiveRiskPolicyService;
 
     public AdminController(
             UserService userService,
@@ -72,7 +77,9 @@ public class AdminController {
             UserBehaviorProfileRepository behaviorRepository,
             UserBehaviorProfileService behaviorService,
             SystemPressureService systemPressureService,
-            RecoveryPolicyService recoveryPolicyService
+            RecoveryPolicyService recoveryPolicyService,
+            AdminStepUpService adminStepUpService,
+            AdaptiveRiskPolicyService adaptiveRiskPolicyService
     ) {
         this.userService = userService;
         this.adaptiveSecurityService = adaptiveSecurityService;
@@ -86,6 +93,63 @@ public class AdminController {
         this.behaviorService = behaviorService;
         this.systemPressureService = systemPressureService;
         this.recoveryPolicyService = recoveryPolicyService;
+        this.adminStepUpService = adminStepUpService;
+        this.adaptiveRiskPolicyService = adaptiveRiskPolicyService;
+    }
+
+    /**
+     * Returns the adaptive risk policy as a structured document so the SOC
+     * console can show thresholds, weights, level actions, and limitations
+     * without hardcoding strings on the client.
+     */
+    @GetMapping("/risk-policy")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiSuccessResponse<Map<String, Object>>> riskPolicy(HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(ApiResponseUtil.success(
+                "Adaptive risk policy fetched",
+                httpRequest.getRequestURI(),
+                adaptiveRiskPolicyService.describe()
+        ));
+    }
+
+    /**
+     * Mint a 5-minute admin confirmation token after re-checking the admin's
+     * password. Sensitive endpoints require this token in the {@code X-Admin-Confirm}
+     * header. The plaintext password is never echoed back.
+     */
+    @PostMapping("/confirm-action")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiSuccessResponse<Map<String, Object>>> confirmAction(
+            @RequestBody Map<String, String> body,
+            Authentication authentication,
+            HttpServletRequest httpRequest
+    ) {
+        String password = body == null ? null : body.get("password");
+        AdminStepUpService.StepUpToken token = adminStepUpService.confirm(authentication, password, httpRequest);
+        Map<String, Object> data = new HashMap<>();
+        data.put("token", token.token());
+        data.put("issuedAt", token.issuedAt());
+        data.put("expiresAt", token.expiresAt());
+        data.put("ttlSeconds", AdminStepUpService.STEP_UP_TTL.toSeconds());
+        return ResponseEntity.ok(ApiResponseUtil.success("Admin step-up confirmed", httpRequest.getRequestURI(), data));
+    }
+
+    /**
+     * Returns whether the calling admin has an active step-up confirmation. The
+     * actual token is never returned again here -- only the expiry timestamp.
+     */
+    @GetMapping("/confirmation-status")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiSuccessResponse<Map<String, Object>>> confirmationStatus(
+            Authentication authentication,
+            HttpServletRequest httpRequest
+    ) {
+        AdminStepUpService.StepUpToken active = adminStepUpService.status(authentication);
+        Map<String, Object> data = new HashMap<>();
+        data.put("active", active != null);
+        data.put("expiresAt", active == null ? null : active.expiresAt());
+        data.put("ttlSeconds", AdminStepUpService.STEP_UP_TTL.toSeconds());
+        return ResponseEntity.ok(ApiResponseUtil.success("Admin confirmation status", httpRequest.getRequestURI(), data));
     }
 
     @PostMapping("/lock-user")
@@ -96,6 +160,7 @@ public class AdminController {
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
+        adminStepUpService.assertConfirmed(authentication, httpRequest);
         if (minutes <= 0 || minutes > 24 * 60) {
             throw new BadRequestException("minutes must be in (0, 1440]");
         }
@@ -125,6 +190,7 @@ public class AdminController {
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
+        adminStepUpService.assertConfirmed(authentication, httpRequest);
         User user = userService.getRequiredByUsername(username.trim());
         userService.unlockAccount(user);
 
@@ -246,6 +312,7 @@ public class AdminController {
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
+        adminStepUpService.assertConfirmed(authentication, httpRequest);
         threatSignalService.setAttackIntensity01(attackIntensity01);
         String ip = requestContextUtil.clientIp(httpRequest);
         String ua = requestContextUtil.userAgent(httpRequest);
@@ -269,6 +336,7 @@ public class AdminController {
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
+        adminStepUpService.assertConfirmed(authentication, httpRequest);
         if (messageId <= 0) {
             throw new BadRequestException("messageId must be positive");
         }
@@ -293,6 +361,7 @@ public class AdminController {
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
+        adminStepUpService.assertConfirmed(authentication, httpRequest);
         if (messageId <= 0) {
             throw new BadRequestException("messageId must be positive");
         }
@@ -384,6 +453,7 @@ public class AdminController {
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
+        adminStepUpService.assertConfirmed(authentication, httpRequest);
         User user = userService.getRequiredByUsername(username.trim());
         UserBehaviorProfile updated = behaviorService.resetCounters(user);
 

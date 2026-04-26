@@ -23,6 +23,7 @@ public class MessageSendResponse {
     private String recoverySummary;
     private List<String> recoveryNextSteps;
     private String connectionSecurityState;
+    private List<String> connectionShiftedSignals;
     private String warningMessage;
     private LocalDateTime createdAt;
     private String status;
@@ -163,6 +164,14 @@ public class MessageSendResponse {
 
     public void setConnectionSecurityState(String connectionSecurityState) {
         this.connectionSecurityState = connectionSecurityState;
+    }
+
+    public List<String> getConnectionShiftedSignals() {
+        return connectionShiftedSignals;
+    }
+
+    public void setConnectionShiftedSignals(List<String> connectionShiftedSignals) {
+        this.connectionShiftedSignals = connectionShiftedSignals;
     }
 
     public String getWarningMessage() {

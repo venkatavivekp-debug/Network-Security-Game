@@ -110,8 +110,9 @@ public class AuthController {
             User user = userService.getRequiredByUsername(authentication.getName());
 
             // Evaluate connection consistency BEFORE recording the new fingerprint, so we
-            // can flag a session anomaly when the IP/UA changed since last successful login.
-            ConnectionSecurityService.Evaluation connection = connectionSecurityService.evaluate(user, ip, ua);
+            // can flag a session anomaly when the IP/UA/Accept-Language changed since last
+            // successful login. Layered signals come from the live request.
+            ConnectionSecurityService.Evaluation connection = connectionSecurityService.evaluate(user, httpRequest);
 
             // Defense against session fixation: invalidate any pre-auth session and put the
             // SecurityContext in a brand-new session.
@@ -132,6 +133,7 @@ public class AuthController {
             details.put("riskLevel", assessment.getRiskLevel().name());
             details.put("signals", assessment.getSignals());
             details.put("connectionState", connection.state().name());
+            details.put("shiftedSignals", connection.shiftedSignals());
             auditService.record(
                     AuditEventType.AUTH_LOGIN_SUCCESS,
                     user.getUsername(),

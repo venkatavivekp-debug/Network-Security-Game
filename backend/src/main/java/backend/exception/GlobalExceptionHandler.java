@@ -58,6 +58,16 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(AdminStepUpRequiredException.class)
+    public ResponseEntity<ApiErrorResponse> handleStepUp(AdminStepUpRequiredException ex, HttpServletRequest request) {
+        return buildErrorResponse(
+                HttpStatus.FORBIDDEN,
+                "ADMIN_STEP_UP_REQUIRED",
+                request.getRequestURI(),
+                List.of(ex.getMessage() == null ? "Admin step-up required" : ex.getMessage())
+        );
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponse> handleValidation(MethodArgumentNotValidException ex, HttpServletRequest request) {
         List<String> details = ex.getBindingResult()

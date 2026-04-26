@@ -59,6 +59,19 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!--
+                        Mockito 5 + JDK 21 requires opting in to the dynamic agent loader
+                        when self-attaching for inline mocking, otherwise tests fail with
+                        "Could not self-attach to current VM". This flag preserves the
+                        previous behaviour without changing how Mockito is consumed.
+                    -->
+                    <argLine>-XX:+EnableDynamicAgentLoading</argLine>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>
