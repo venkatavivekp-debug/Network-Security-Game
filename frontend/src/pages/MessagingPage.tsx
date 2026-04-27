@@ -10,7 +10,7 @@ import type {
   RiskLevel,
   SystemPressureResponse,
 } from "../api/types";
-import { ApiError } from "../api/client";
+import { ApiError, consumeThrottleNotice } from "../api/client";
 import { messageApi, puzzleApi } from "../api/message";
 import { adminApi } from "../api/admin";
 import { useAuth } from "../state/auth/AuthProvider";
@@ -268,10 +268,10 @@ function SendPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: stri
         ...(algorithmType === "CPHS" ? { puzzleType } : {}),
       });
       setLast(res);
-      onNotice("Message stored securely.");
+      onNotice(consumeThrottleNotice() ?? "Message stored securely.");
       setContent("");
     } catch (err) {
-      if (err instanceof ApiError) onNotice(err.details?.length ? `${err.message}: ${err.details.join("; ")}` : err.message);
+      if (err instanceof ApiError) onNotice(err.userFacingMessage());
       else onNotice("Send failed. Please try again.");
     } finally {
       setBusy(false);
@@ -436,8 +436,10 @@ function InboxPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: str
       const data = await messageApi.received();
       setItems(data);
       if (data.length && selectedId == null) setSelectedId(data[0].id);
+      const throttle = consumeThrottleNotice();
+      if (throttle) onNotice(throttle);
     } catch (err) {
-      if (err instanceof ApiError) onNotice(err.details?.length ? `${err.message}: ${err.details.join("; ")}` : err.message);
+      if (err instanceof ApiError) onNotice(err.userFacingMessage());
       else onNotice("Failed to load inbox.");
     } finally {
       setBusy(false);
@@ -475,9 +477,9 @@ function InboxPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: str
     try {
       const res = await messageApi.decrypt(selectedId);
       setDecrypted(res.decryptedContent);
-      onNotice("Message decrypted.");
+      onNotice(consumeThrottleNotice() ?? "Message decrypted.");
     } catch (err) {
-      if (err instanceof ApiError) onNotice(err.details?.length ? `${err.message}: ${err.details.join("; ")}` : err.message);
+      if (err instanceof ApiError) onNotice(err.userFacingMessage());
       else onNotice("Decrypt failed.");
     } finally {
       setBusy(false);

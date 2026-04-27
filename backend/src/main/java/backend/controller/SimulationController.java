@@ -11,6 +11,9 @@ import backend.dto.SimulationHistoryResponse;
 import backend.dto.SimulationRunRequest;
 import backend.dto.SimulationRunResponse;
 import backend.dto.ApiSuccessResponse;
+import backend.adaptive.ThreatSignalService;
+import backend.audit.AuditEventType;
+import backend.audit.AuditService;
 import backend.model.AlgorithmType;
 import backend.model.EvaluationComparisonType;
 import backend.model.EvaluationSeedStrategy;
@@ -24,6 +27,7 @@ import backend.service.SimulationHistoryService;
 import backend.simulation.game.GameSimulationService;
 import backend.simulation.game.SimulationResult;
 import backend.util.ApiResponseUtil;
+import backend.util.RequestContextUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -58,6 +62,9 @@ public class SimulationController {
     private final SimulationComparisonService simulationComparisonService;
     private final AdvancedSimulationService advancedSimulationService;
     private final EvaluationFrameworkService evaluationFrameworkService;
+    private final ThreatSignalService threatSignalService;
+    private final AuditService auditService;
+    private final RequestContextUtil requestContextUtil;
 
     public SimulationController(
             GameSimulationService gameSimulationService,
@@ -65,7 +72,10 @@ public class SimulationController {
             SimulationHistoryService simulationHistoryService,
             SimulationComparisonService simulationComparisonService,
             AdvancedSimulationService advancedSimulationService,
-            EvaluationFrameworkService evaluationFrameworkService
+            EvaluationFrameworkService evaluationFrameworkService,
+            ThreatSignalService threatSignalService,
+            AuditService auditService,
+            RequestContextUtil requestContextUtil
     ) {
         this.gameSimulationService = gameSimulationService;
         this.messageService = messageService;
@@ -73,6 +83,9 @@ public class SimulationController {
         this.simulationComparisonService = simulationComparisonService;
         this.advancedSimulationService = advancedSimulationService;
         this.evaluationFrameworkService = evaluationFrameworkService;
+        this.threatSignalService = threatSignalService;
+        this.auditService = auditService;
+        this.requestContextUtil = requestContextUtil;
     }
 
     @PostMapping("/run")
@@ -83,6 +96,7 @@ public class SimulationController {
             HttpServletRequest httpRequest
     ) {
         AlgorithmType algorithmType = resolveAlgorithmType(request, authentication);
+        applySimulationPressure(authentication, httpRequest, request.getAttackBudget(), request.getDefenseBudget(), request.getRecoveryBudget());
 
         SimulationResult result = gameSimulationService.runSimulation(
                 request.getNumNodes(),
@@ -109,6 +123,43 @@ public class SimulationController {
                 httpRequest.getRequestURI(),
                 simulationHistoryService.toRunResponse(savedRun)
         ));
+    }
+
+    private void applySimulationPressure(org.springframework.security.core.Authentication authentication, HttpServletRequest request, Integer attackBudget, Integer defenseBudget, Integer recoveryBudget) {
+        double intensity01 = normalizeAttackIntensity01(attackBudget, defenseBudget, recoveryBudget);
+        double current = threatSignalService.currentAttackIntensity01();
+        // Bridge simulation into the real adaptive pressure signal by raising (never lowering) the global
+        // attack intensity. This keeps the demo deterministic and avoids hiding admin-set values.
+        double raised = Math.max(current, intensity01);
+        threatSignalService.setAttackIntensity01(raised);
+        try {
+            String username = authentication == null ? "anonymous" : authentication.getName();
+            auditService.record(
+                    AuditEventType.SIMULATION_PRESSURE_APPLIED,
+                    username,
+                    null,
+                    requestContextUtil.clientIp(request),
+                    requestContextUtil.userAgent(request),
+                    null,
+                    java.util.Map.of(
+                            "normalizedAttackIntensity01", intensity01,
+                            "previousAttackIntensity01", current,
+                            "newAttackIntensity01", raised
+                    )
+            );
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private double normalizeAttackIntensity01(Integer attackBudget, Integer defenseBudget, Integer recoveryBudget) {
+        double a = attackBudget == null ? 0 : Math.max(0, attackBudget);
+        double d = defenseBudget == null ? 0 : Math.max(0, defenseBudget);
+        double r = recoveryBudget == null ? 0 : Math.max(0, recoveryBudget);
+        double denom = a + d + r;
+        if (!(denom > 0)) return 0.0;
+        double v = a / denom;
+        if (!Double.isFinite(v)) return 0.0;
+        return Math.max(0.0, Math.min(1.0, v));
     }
 
     @GetMapping("/history")

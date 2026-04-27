@@ -168,6 +168,7 @@ public class MessagePuzzleService {
             return response;
         } catch (BadRequestException ex) {
             userBehaviorProfileService.recordPuzzleFailure(receiver);
+            int burst = userBehaviorProfileService.recentFailureBurst(receiver);
             auditService.record(
                     AuditEventType.PUZZLE_SOLVE_FAILURE,
                     receiver.getUsername(),
@@ -179,9 +180,30 @@ public class MessagePuzzleService {
                             "messageId", message.getId(),
                             "puzzleType", puzzle.getPuzzleType().name(),
                             "attemptsUsed", puzzle.getAttemptsUsed(),
-                            "reason", ex.getMessage()
+                            "reason", ex.getMessage(),
+                            "failureBurst", burst
                     )
             );
+            // Anomaly-driven enforcement: if we see a sustained failure burst, hold early
+            // even if attempts remain. This slows brute forcing while keeping a clear
+            // recovery path (admin review / reset counters).
+            if (burst >= 5 && message.getStatus() != MessageStatus.HELD) {
+                message.setStatus(MessageStatus.HELD);
+                message.setHoldReason("SUSPICIOUS_BRUTE_FORCE");
+                messageRepository.save(message);
+                try {
+                    auditService.record(
+                            AuditEventType.ADAPTIVE_ESCALATION,
+                            receiver.getUsername(),
+                            receiver.getUsername(),
+                            null,
+                            null,
+                            null,
+                            Map.of("decision", "hold_early_on_failure_burst", "failureBurst", burst, "messageId", message.getId())
+                    );
+                } catch (RuntimeException ignored) {
+                }
+            }
             if (puzzle.getAttemptsUsed() >= puzzle.getAttemptsAllowed() && message.getStatus() != MessageStatus.HELD) {
                 message.setStatus(MessageStatus.HELD);
                 message.setHoldReason("PUZZLE_ATTEMPTS_EXHAUSTED");
