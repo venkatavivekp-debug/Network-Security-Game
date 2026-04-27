@@ -5,7 +5,10 @@ import backend.dto.AdvancedSimulationRunRequest;
 import backend.dto.AdvancedSimulationRunResponse;
 import backend.dto.ApiSuccessResponse;
 import backend.model.AlgorithmType;
+import backend.adaptive.ThreatSignalService;
+import backend.audit.AuditService;
 import backend.service.AdvancedSimulationService;
+import backend.util.RequestContextUtil;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -27,7 +30,10 @@ class AdvancedSimulationControllerTest {
                 null,
                 null,
                 new StubAdvancedSimulationService(),
-                null
+                null,
+                new ThreatSignalService(),
+                org.mockito.Mockito.mock(AuditService.class),
+                new RequestContextUtil()
         );
 
         AdvancedSimulationRunRequest request = new AdvancedSimulationRunRequest();

@@ -7,7 +7,10 @@ import backend.dto.EvaluationScenarioRequest;
 import backend.model.AlgorithmType;
 import backend.model.EvaluationComparisonType;
 import backend.model.EvaluationSeedStrategy;
+import backend.adaptive.ThreatSignalService;
+import backend.audit.AuditService;
 import backend.service.EvaluationFrameworkService;
+import backend.util.RequestContextUtil;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -29,7 +32,10 @@ class EvaluationControllerTest {
                 null,
                 null,
                 null,
-                new StubEvaluationFrameworkService()
+                new StubEvaluationFrameworkService(),
+                new ThreatSignalService(),
+                org.mockito.Mockito.mock(AuditService.class),
+                new RequestContextUtil()
         );
 
         EvaluationScenarioRequest request = new EvaluationScenarioRequest();

@@ -41,13 +41,18 @@ public class ExternalThreatSummaryService {
         counters.put("rateLimitBlocked", auditEventRepository.countByTypeSince(AuditEventType.RATE_LIMIT_BLOCKED, since));
         counters.put("forbiddenAccess", auditEventRepository.countByTypeSince(AuditEventType.FORBIDDEN_ACCESS, since));
         counters.put("validationRejected", auditEventRepository.countByTypeSince(AuditEventType.VALIDATION_REJECTED, since));
+        counters.put("replayBlocked", auditEventRepository.countByTypeSince(AuditEventType.REPLAY_BLOCKED, since));
+        counters.put("tamperRejected", auditEventRepository.countByTypeSince(AuditEventType.INTEGRITY_FAILED, since));
+        counters.put("throttleApplied", auditEventRepository.countByTypeSince(AuditEventType.THROTTLE_APPLIED, since));
         counters.put("sessionAnomaly", auditEventRepository.countByTypeSince(AuditEventType.SESSION_ANOMALY, since));
         counters.put("puzzleSolveFailure", auditEventRepository.countByTypeSince(AuditEventType.PUZZLE_SOLVE_FAILURE, since));
         counters.put("loginFailure", auditEventRepository.countByTypeSince(AuditEventType.AUTH_LOGIN_FAILURE, since));
 
         long blockedRequests = counters.get("rateLimitBlocked")
                 + counters.get("forbiddenAccess")
-                + counters.get("validationRejected");
+                + counters.get("validationRejected")
+                + counters.get("replayBlocked")
+                + counters.get("tamperRejected");
 
         List<Map<String, Object>> recent = new ArrayList<>();
         List<AuditEvent> all = auditEventRepository.findTop200ByOrderByCreatedAtDesc();
@@ -75,6 +80,9 @@ public class ExternalThreatSummaryService {
         return type == AuditEventType.RATE_LIMIT_BLOCKED
                 || type == AuditEventType.FORBIDDEN_ACCESS
                 || type == AuditEventType.VALIDATION_REJECTED
+                || type == AuditEventType.REPLAY_BLOCKED
+                || type == AuditEventType.INTEGRITY_FAILED
+                || type == AuditEventType.THROTTLE_APPLIED
                 || type == AuditEventType.SESSION_ANOMALY
                 || type == AuditEventType.PUZZLE_SOLVE_FAILURE
                 || type == AuditEventType.AUTH_LOGIN_FAILURE

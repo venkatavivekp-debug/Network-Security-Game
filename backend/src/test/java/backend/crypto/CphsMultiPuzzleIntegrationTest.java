@@ -203,8 +203,19 @@ class CphsMultiPuzzleIntegrationTest {
         long[] seq = Arrays.stream(parts).mapToLong(Long::parseLong).toArray();
         long d1 = seq[1] - seq[0];
         long d2 = seq[2] - seq[1];
-        if (d1 == d2) return seq[3] + d1;
-        if (seq[0] != 0 && seq[1] / seq[0] == seq[2] / seq[1]) return seq[3] * (seq[1] / seq[0]);
+        long d3 = seq[3] - seq[2];
+        // Arithmetic progression: require all three diffs match to avoid
+        // false positives for some Fibonacci-like starts (e.g. 1,2,3,5,...).
+        if (d1 == d2 && d2 == d3) return seq[3] + d1;
+
+        // Geometric progression: use exact integer ratio checks.
+        if (seq[0] != 0 && seq[1] != 0 && seq[1] % seq[0] == 0 && seq[2] % seq[1] == 0) {
+            long r1 = seq[1] / seq[0];
+            long r2 = seq[2] / seq[1];
+            if (r1 == r2) return seq[3] * r1;
+        }
+
+        // Fibonacci-like: next = last + previous
         return seq[3] + seq[2];
     }
 }

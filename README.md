@@ -422,6 +422,75 @@ wildcarded.
 - Audit logs are stored in the same database as the application data; in a
   real deployment they should fan out to an append-only sink (see §11).
 
+## 10b. Security guarantees and protections (final maturity pass)
+
+This section summarizes the concrete protections that make the system more
+resilient against an **active attacker** (replay, tampering, brute force, and
+session abuse), while keeping the core research flow intact.
+
+### Replay protection (sensitive actions)
+
+For `POST` actions that change state or reveal protected content:
+
+- `POST /puzzle/*solve*`
+- `POST /message/decrypt/*`
+- `POST /admin/*` (sensitive actions)
+
+the backend requires:
+
+- **Request nonce**: `X-Req-Nonce` (UUID)
+- **Timestamp**: `X-Req-Ts` (epoch ms)
+- **Short TTL**: default 120s (`app.security.replay.ttl-seconds`)
+
+Rules:
+
+- same `(session, nonce)` cannot be reused
+- expired timestamps are rejected
+- failures return clean `403` (`REPLAY_BLOCKED`)
+
+### Request integrity (lightweight HMAC)
+
+To detect request tampering on cookie-based session calls, sensitive actions
+are signed with an HMAC:
+
+`HMAC(secret, method + path + body + timestamp + nonce)`
+
+- The secret is **per-session** (`SessionIntegrityService`), stored server-side.
+- The frontend fetches the secret once after login via `GET /security/integrity-key`.
+- Signature headers:
+  - `X-Req-Sig` (base64 HMAC)
+  - `X-Req-Nonce`, `X-Req-Ts` as above
+- Invalid signatures return clean `403` (`REQUEST_INTEGRITY_FAILED`).
+
+Honest limitation: if an attacker has XSS on the frontend origin, they can sign
+requests too. CSP reduces that risk, but does not eliminate it.
+
+### Anomaly-driven enforcement (throttle + earlier holds)
+
+The system avoids permanent lockouts but reacts to attacker-like behaviour:
+
+- **Temporary throttling**: rapid sensitive requests and failure bursts trigger a short
+  delay (`X-NSG-Throttle-Ms`) rather than a hard block.
+- **Earlier admin review**: sustained puzzle failure bursts can trigger a message hold
+  (`SUSPICIOUS_BRUTE_FORCE`) even if attempts remain, keeping a recovery path via admin review/reset.
+
+### Simulation-to-system bridge
+
+Simulation runs feed an **attack pressure signal** back into the live adaptive engine:
+
+- `SimulationController` computes a normalized `attackIntensity01` from budgets
+  and raises the global threat signal (`ThreatSignalService`) via `SIMULATION_PRESSURE_APPLIED`.
+- Higher pressure increases puzzle difficulty and drives more step-up to SHCS/CPHS
+  under the same user behaviour.
+
+### Threats mitigated (practical list)
+
+- **IDOR / broken object-level authorization** (participant-scoped lookups)
+- **Replay attacks** on sensitive actions (nonce + timestamp TTL)
+- **Request tampering** (HMAC integrity)
+- **Brute force / scripted abuse** (rate limits + throttling + earlier holds)
+- **Session abuse signals** (connection fingerprint shift/anomaly → adaptive escalation + audit)
+
 ## 11. Production hardening recommendations
 
 If you wanted to take this beyond a research sandbox:

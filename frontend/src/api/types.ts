@@ -123,6 +123,9 @@ export interface ExternalThreatSummary {
     rateLimitBlocked: number;
     forbiddenAccess: number;
     validationRejected: number;
+    replayBlocked?: number;
+    tamperRejected?: number;
+    throttleApplied?: number;
     sessionAnomaly: number;
     puzzleSolveFailure: number;
     loginFailure: number;

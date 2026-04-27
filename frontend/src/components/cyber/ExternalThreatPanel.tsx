@@ -49,6 +49,9 @@ export function ExternalThreatPanel() {
             <ThreatStat label="Rate-limit (429)" value={data.counters.rateLimitBlocked} />
             <ThreatStat label="Forbidden (403)" value={data.counters.forbiddenAccess} />
             <ThreatStat label="Validation (400)" value={data.counters.validationRejected} />
+            <ThreatStat label="Replay blocked" value={data.counters.replayBlocked ?? 0} />
+            <ThreatStat label="Integrity failed" value={data.counters.tamperRejected ?? 0} />
+            <ThreatStat label="Throttles" value={data.counters.throttleApplied ?? 0} />
             <ThreatStat label="Session anomalies" value={data.counters.sessionAnomaly} />
             <ThreatStat label="Puzzle failures" value={data.counters.puzzleSolveFailure} />
             <ThreatStat label="Login failures" value={data.counters.loginFailure} />
@@ -97,6 +100,12 @@ function prettyType(eventType: string): string {
       return "Forbidden";
     case "VALIDATION_REJECTED":
       return "Validation";
+    case "REPLAY_BLOCKED":
+      return "Replay";
+    case "INTEGRITY_FAILED":
+      return "Integrity";
+    case "THROTTLE_APPLIED":
+      return "Throttle";
     case "SESSION_ANOMALY":
       return "Session";
     case "PUZZLE_SOLVE_FAILURE":
@@ -114,12 +123,16 @@ function eventTone(eventType: string): string {
   switch (eventType) {
     case "RATE_LIMIT_BLOCKED":
     case "FORBIDDEN_ACCESS":
+    case "REPLAY_BLOCKED":
+    case "INTEGRITY_FAILED":
     case "AUTH_ACCOUNT_LOCKED":
       return "danger";
     case "VALIDATION_REJECTED":
     case "AUTH_LOGIN_FAILURE":
       return "warn";
     case "SESSION_ANOMALY":
+      return "warn";
+    case "THROTTLE_APPLIED":
       return "warn";
     case "PUZZLE_SOLVE_FAILURE":
       return "muted";
