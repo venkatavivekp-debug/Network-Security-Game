@@ -20,7 +20,10 @@ public final class ApiRequestUtil {
         String uri = request.getRequestURI();
         return uri.startsWith("/auth/")
                 || uri.startsWith("/message/")
+                || uri.startsWith("/puzzle/")
                 || uri.startsWith("/attack/")
+                || uri.startsWith("/admin/")
+                || uri.startsWith("/security/")
                 || "/simulation/run".equals(uri)
                 || "/simulation/history".equals(uri)
                 || uri.matches("^/simulation/history/\\d+$")

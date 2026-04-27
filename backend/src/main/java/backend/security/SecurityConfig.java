@@ -30,6 +30,7 @@ public class SecurityConfig {
     private final ApiAccessDeniedHandler apiAccessDeniedHandler;
     private final CustomHeaderCsrfFilter customHeaderCsrfFilter;
     private final SecurityHeadersFilter securityHeadersFilter;
+    private final SensitiveRequestProtectionFilter sensitiveRequestProtectionFilter;
 
     @Value("${app.security.cors.allowed-origins:http://localhost:5173,http://localhost:5174,http://localhost:3000}")
     private String corsAllowedOrigins;
@@ -39,13 +40,15 @@ public class SecurityConfig {
             ApiAuthenticationEntryPoint apiAuthenticationEntryPoint,
             ApiAccessDeniedHandler apiAccessDeniedHandler,
             CustomHeaderCsrfFilter customHeaderCsrfFilter,
-            SecurityHeadersFilter securityHeadersFilter
+            SecurityHeadersFilter securityHeadersFilter,
+            SensitiveRequestProtectionFilter sensitiveRequestProtectionFilter
     ) {
         this.userDetailsService = userDetailsService;
         this.apiAuthenticationEntryPoint = apiAuthenticationEntryPoint;
         this.apiAccessDeniedHandler = apiAccessDeniedHandler;
         this.customHeaderCsrfFilter = customHeaderCsrfFilter;
         this.securityHeadersFilter = securityHeadersFilter;
+        this.sensitiveRequestProtectionFilter = sensitiveRequestProtectionFilter;
     }
 
     @Bean
@@ -75,6 +78,7 @@ public class SecurityConfig {
                         .accessDeniedHandler(apiAccessDeniedHandler))
                 .addFilterBefore(securityHeadersFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(customHeaderCsrfFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(sensitiveRequestProtectionFilter, CustomHeaderCsrfFilter.class)
                 .authenticationProvider(authenticationProvider())
                 .httpBasic(Customizer.withDefaults())
                 .formLogin(form -> form.disable())
@@ -100,8 +104,8 @@ public class SecurityConfig {
         config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With",
-                "X-Admin-Confirm", "Accept", "Accept-Language"));
-        config.setExposedHeaders(List.of("Retry-After"));
+                "X-Admin-Confirm", "X-Req-Nonce", "X-Req-Ts", "X-Req-Sig", "Accept", "Accept-Language"));
+        config.setExposedHeaders(List.of("Retry-After", "X-NSG-Throttle-Ms"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
