@@ -59,5 +59,28 @@ class AdaptiveModePolicyServiceTest {
         assertEquals(AlgorithmType.CPHS, decision.getEffectiveMode());
         assertTrue(decision.isEscalated());
     }
-}
 
+    @Test
+    void adaptiveModeShouldResolveToConcreteProtection() {
+        AdaptiveSecurityProperties props = new AdaptiveSecurityProperties();
+        ThreatSignalService threat = new ThreatSignalService();
+        threat.setAttackIntensity01(0.65);
+        PuzzleProperties puzzleProps = new PuzzleProperties();
+        puzzleProps.setMaxIterations(180000);
+        puzzleProps.setChallengeBytes(12);
+        puzzleProps.setSimulatedDelayMs(0);
+        puzzleProps.setKeyDerivationSalt("test");
+
+        AdaptiveSecurityService securityService = new AdaptiveSecurityService(props, new HashUtil(), mock(AuditService.class), threat);
+        AdaptiveModePolicyService policy = new AdaptiveModePolicyService(securityService, threat, props, puzzleProps);
+
+        User sender = new User("alice", "x", Role.SENDER);
+        sender.setFailedLoginAttempts(0);
+        AdaptiveDecision decision = policy.decide(sender, AlgorithmType.ADAPTIVE, "1.2.3.4", "ua", 0, 0);
+
+        assertEquals(AlgorithmType.ADAPTIVE, decision.getRequestedMode());
+        assertEquals(AlgorithmType.SHCS, decision.getEffectiveMode());
+        assertTrue(decision.isEscalated());
+        assertTrue(decision.getReasons().contains("adaptive_selected_shcs"));
+    }
+}

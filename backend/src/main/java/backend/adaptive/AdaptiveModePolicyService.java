@@ -61,23 +61,30 @@ public class AdaptiveModePolicyService {
             else if ("ANOMALOUS".equals(connectionState)) reasons.add("connection_anomalous");
         }
 
-        AlgorithmType effective = requestedMode;
+        boolean adaptiveRequested = requestedMode == AlgorithmType.ADAPTIVE;
+        AlgorithmType effective = adaptiveRequested ? AlgorithmType.NORMAL : requestedMode;
         boolean hold = false;
 
         // Reliability-first: prefer step-up controls before hard denial.
         if (assessment.getRiskLevel() == RiskLevel.LOW) {
-            effective = requestedMode;
+            effective = adaptiveRequested && threat >= 0.55 ? AlgorithmType.SHCS : effective;
+            if (adaptiveRequested && effective == AlgorithmType.SHCS) {
+                reasons.add("adaptive_selected_shcs");
+            }
         } else if (assessment.getRiskLevel() == RiskLevel.ELEVATED) {
             // Prefer stronger posture if the user asked for NORMAL.
-            if (requestedMode == AlgorithmType.NORMAL && (threat > 0.55 || assessment.getRiskScore() > 0.55)) {
+            if (adaptiveRequested) {
+                effective = AlgorithmType.SHCS;
+                reasons.add("adaptive_selected_shcs");
+            } else if (requestedMode == AlgorithmType.NORMAL && (threat > 0.55 || assessment.getRiskScore() > 0.55)) {
                 effective = AlgorithmType.SHCS;
                 reasons.add("step_up_to_shcs");
             }
         } else if (assessment.getRiskLevel() == RiskLevel.HIGH) {
             // High risk: enforce CPHS gating for meaningful proof-of-legitimacy.
-            if (requestedMode != AlgorithmType.CPHS) {
+            if (effective != AlgorithmType.CPHS) {
                 effective = AlgorithmType.CPHS;
-                reasons.add("enforced_cphs_high_risk");
+                reasons.add(adaptiveRequested ? "adaptive_selected_cphs" : "enforced_cphs_high_risk");
             }
         } else if (assessment.getRiskLevel() == RiskLevel.CRITICAL) {
             // Critical: enforce CPHS and apply a temporary communication hold for admin-supervised recovery.
@@ -93,7 +100,7 @@ public class AdaptiveModePolicyService {
             reasons.add("step_up_connection_anomalous");
         }
 
-        boolean escalated = effective != requestedMode;
+        boolean escalated = adaptiveRequested ? effective != AlgorithmType.NORMAL : effective != requestedMode;
         PuzzleDifficulty difficulty = computeDifficulty(assessment, threat, recentPuzzleFailures);
 
         return new AdaptiveDecision(requestedMode, effective, escalated, hold, reasons, assessment, difficulty);
@@ -153,4 +160,3 @@ public class AdaptiveModePolicyService {
         return "elevated";
     }
 }
-

@@ -42,7 +42,7 @@ export function CommandCenterPage() {
   const [attackBudget, setAttackBudget] = useState(3);
   const [defenseBudget, setDefenseBudget] = useState(3);
   const [recoveryBudget, setRecoveryBudget] = useState(2);
-  const [algorithmType, setAlgorithmType] = useState<AlgorithmType>("SHCS");
+  const [algorithmType, setAlgorithmType] = useState<AlgorithmType>("ADAPTIVE");
 
   const [kpiCompromise, setKpiCompromise] = useState(0);
   const [kpiResilience, setKpiResilience] = useState(1);
@@ -244,6 +244,7 @@ export function CommandCenterPage() {
                 <option value="NORMAL">NORMAL</option>
                 <option value="SHCS">SHCS</option>
                 <option value="CPHS">CPHS</option>
+                <option value="ADAPTIVE">ADAPTIVE</option>
               </select>
             </label>
 
@@ -628,4 +629,3 @@ function pickUnique(random: () => number, maxId: number, count: number) {
 function sleep(ms: number) {
   return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 }
-

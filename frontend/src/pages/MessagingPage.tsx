@@ -310,6 +310,7 @@ function SendPanel({ enabled, onNotice }: { enabled: boolean; onNotice: (s: stri
             <option value="NORMAL">NORMAL</option>
             <option value="SHCS">SHCS</option>
             <option value="CPHS">CPHS</option>
+            <option value="ADAPTIVE">ADAPTIVE</option>
           </select>
         </label>
 
@@ -412,6 +413,12 @@ function describeLoadout(algo: AlgorithmType, puzzle: PuzzleType): { tier: strin
     return {
       tier: "Tier II",
       hint: "Self-Healing Cipher. Adaptive engine can auto-rotate keys under pressure.",
+    };
+  }
+  if (algo === "ADAPTIVE") {
+    return {
+      tier: "Auto",
+      hint: "Risk-driven mode. The backend chooses NORMAL, SHCS, or CPHS from the current threat signals.",
     };
   }
   return {

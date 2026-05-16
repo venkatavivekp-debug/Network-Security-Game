@@ -31,6 +31,7 @@ public class AttackSimulationService {
             case NORMAL -> confidence >= properties.getNormalClassificationThreshold();
             case SHCS -> confidence >= properties.getShcsClassificationThreshold();
             case CPHS -> confidence >= properties.getCphsClassificationThreshold();
+            case ADAPTIVE -> confidence >= adaptiveClassificationThreshold();
         };
 
         boolean selectiveJammingSuccess = classificationSuccess && confidence >= properties.getJammingThreshold();
@@ -59,6 +60,7 @@ public class AttackSimulationService {
             case NORMAL -> randomBetween(properties.getNormalConfidenceMin(), properties.getNormalConfidenceMax());
             case SHCS -> randomBetween(properties.getShcsConfidenceMin(), properties.getShcsConfidenceMax());
             case CPHS -> randomBetween(properties.getCphsConfidenceMin(), properties.getCphsConfidenceMax());
+            case ADAPTIVE -> randomBetween(properties.getShcsConfidenceMin(), properties.getCphsConfidenceMax());
         };
     }
 
@@ -67,8 +69,13 @@ public class AttackSimulationService {
             case NORMAL -> properties.getNormalBaseTimeMs();
             case SHCS -> properties.getShcsBaseTimeMs();
             case CPHS -> properties.getCphsBaseTimeMs();
+            case ADAPTIVE -> Math.max(properties.getShcsBaseTimeMs(), properties.getCphsBaseTimeMs());
         };
         return baseTime + ThreadLocalRandom.current().nextLong(10, 55);
+    }
+
+    private double adaptiveClassificationThreshold() {
+        return (properties.getShcsClassificationThreshold() + properties.getCphsClassificationThreshold()) / 2.0;
     }
 
     private String buildSummary(

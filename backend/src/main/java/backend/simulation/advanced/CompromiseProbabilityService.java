@@ -80,6 +80,7 @@ public class CompromiseProbabilityService {
             case NORMAL -> properties.getNormalCompromiseMultiplier();
             case SHCS -> properties.getShcsCompromiseMultiplier();
             case CPHS -> properties.getCphsCompromiseMultiplier();
+            case ADAPTIVE -> (properties.getShcsCompromiseMultiplier() + properties.getCphsCompromiseMultiplier()) / 2.0;
         };
     }
 

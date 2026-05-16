@@ -1,6 +1,6 @@
 export type Role = "SENDER" | "RECEIVER" | "ADMIN";
 
-export type AlgorithmType = "NORMAL" | "SHCS" | "CPHS";
+export type AlgorithmType = "NORMAL" | "SHCS" | "CPHS" | "ADAPTIVE";
 
 export type RecoveryState =
   | "NORMAL"
@@ -292,4 +292,3 @@ export interface EvaluationRunResponse {
   aggregateMetrics: EvaluationAggregateMetricsResponse | null;
   createdAt: string;
 }
-

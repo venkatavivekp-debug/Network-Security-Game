@@ -128,6 +128,7 @@ public class AttackStrategy {
             case NORMAL -> properties.getNormalAttackMultiplier();
             case SHCS -> properties.getShcsAttackMultiplier();
             case CPHS -> properties.getCphsAttackMultiplier();
+            case ADAPTIVE -> (properties.getShcsAttackMultiplier() + properties.getCphsAttackMultiplier()) / 2.0;
         };
     }
 

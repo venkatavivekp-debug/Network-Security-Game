@@ -450,7 +450,7 @@ public class AdvancedAttackGraph {
                 continue;
             }
 
-            if (algorithmType != null) {
+            if (algorithmType != null && algorithmType != AlgorithmType.ADAPTIVE) {
                 node.setEncryptionModeImpact(algorithmType);
                 continue;
             }
@@ -482,7 +482,7 @@ public class AdvancedAttackGraph {
     }
 
     private static AlgorithmType randomMode(Random random) {
-        AlgorithmType[] values = AlgorithmType.values();
+        AlgorithmType[] values = {AlgorithmType.NORMAL, AlgorithmType.SHCS, AlgorithmType.CPHS};
         return values[random.nextInt(values.length)];
     }
 

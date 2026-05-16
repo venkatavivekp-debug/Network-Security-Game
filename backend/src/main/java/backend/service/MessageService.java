@@ -400,6 +400,7 @@ public class MessageService {
             );
             case SHCS -> shcsService.encryptAndHideHeader(plainText, senderUsername, receiverUsername);
             case CPHS -> cphsService.encryptWithPuzzle(plainText, puzzleType, difficulty);
+            case ADAPTIVE -> throw new BadRequestException("ADAPTIVE must resolve to a concrete security mode before encryption");
         };
     }
 

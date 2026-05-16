@@ -3,5 +3,6 @@ package backend.model;
 public enum AlgorithmType {
     NORMAL,
     SHCS,
-    CPHS
+    CPHS,
+    ADAPTIVE
 }

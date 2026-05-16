@@ -84,11 +84,18 @@ public class GameSimulationService {
         DefenseStrategy defenseStrategy = new DefenseStrategy(properties);
         DefenseStrategy.DefenseStageResult defenseResult = defenseStrategy.apply(graph, defenseBudget);
 
+        AlgorithmType effectiveAlgorithmType = resolveSimulationMode(
+                algorithmType,
+                attackBudget,
+                defenseBudget,
+                recoveryBudget
+        );
+
         AttackStrategy attackStrategy = new AttackStrategy(properties);
         AttackStrategy.AttackStageResult attackResult = attackStrategy.apply(
                 graph,
                 attackBudget,
-                algorithmType,
+                effectiveAlgorithmType,
                 new Random(effectiveSeed ^ 0x9E3779B97F4A7C15L)
         );
         double afterAttackConnectivity = graph.computeConnectivity();
@@ -112,8 +119,9 @@ public class GameSimulationService {
         double attackerUtility = damageCaused - attackResult.getAttackCost();
 
         LOGGER.info(
-                "Game simulation complete algo={} nodes={} edges={} initial={} afterAttack={} afterRecovery={} nodesLost={} edgesLost={}",
+                "Game simulation complete algo={} effectiveAlgo={} nodes={} edges={} initial={} afterAttack={} afterRecovery={} nodesLost={} edgesLost={}",
                 algorithmType,
+                effectiveAlgorithmType,
                 numNodes,
                 numEdges,
                 round(initialConnectivity),
@@ -135,6 +143,25 @@ public class GameSimulationService {
                 algorithmType,
                 round(attackResult.getEffectiveAttackSuccessProbability())
         );
+    }
+
+    private AlgorithmType resolveSimulationMode(
+            AlgorithmType algorithmType,
+            int attackBudget,
+            int defenseBudget,
+            int recoveryBudget
+    ) {
+        if (algorithmType != AlgorithmType.ADAPTIVE) {
+            return algorithmType;
+        }
+        int defenderCapacity = defenseBudget + recoveryBudget;
+        if (attackBudget > defenderCapacity) {
+            return AlgorithmType.CPHS;
+        }
+        if (attackBudget > defenseBudget) {
+            return AlgorithmType.SHCS;
+        }
+        return AlgorithmType.NORMAL;
     }
 
     private void validateInputs(int numNodes, int numEdges, int attackBudget, int defenseBudget, int recoveryBudget) {
